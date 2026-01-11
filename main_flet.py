@@ -15,7 +15,15 @@ from windows_media import WindowsMediaControls
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+import sys
+if getattr(sys, 'frozen', False):
+    # Look for .env in the same folder as the .exe
+    base_path = os.path.dirname(sys.executable)
+    env_path = os.path.join(base_path, '.env')
+    load_dotenv(env_path)
+else:
+    load_dotenv()
+
 YT_API_KEY = os.getenv("YT_API_KEY")
 
 if not YT_API_KEY or "AIza" not in YT_API_KEY:
@@ -110,10 +118,21 @@ class DabFletApp:
         # Start periodic download progress refresh
         self._start_download_refresh_timer()
         
+        
         self.running = True
         threading.Thread(target=self._update_loop, daemon=True).start()
         
-        self._show_home()
+        # Auto-login check
+        auth = self.settings.get_auth_credentials()
+        if auth and auth.get("email") and auth.get("password"):
+            # Delay slightly to ensure UI is ready
+            threading.Timer(0.5, lambda: self._handle_login(auth["email"], auth["password"], is_auto=True)).start()
+        else:
+            self._show_home()
+
+        # Check for missing API Key
+        if not YT_API_KEY or "AIza" not in YT_API_KEY:
+             threading.Timer(2.0, lambda: self._show_banner("Search disabled: YouTube API key missing in .env", ft.Colors.ORANGE_700)).start()
 
     def _update_loop(self):
         while self.running:
@@ -241,6 +260,8 @@ class DabFletApp:
             self._nav_item(ft.Icons.ADD_BOX, "Create Library", self._open_create_lib),
             self._nav_item(ft.Icons.FAVORITE, "Favorites", self._show_favorites),
             self._nav_item(ft.Icons.SETTINGS, "Settings", self._show_settings),
+            ft.Container(height=20),
+            self._nav_item(ft.Icons.LOGOUT, "Sign Out", self._handle_logout, color=ft.Colors.RED_400),
         ], spacing=5)
 
         self.sidebar = ft.Container(
@@ -370,7 +391,7 @@ class DabFletApp:
         )
         self._update_player_bar_theme()
 
-    def _nav_item(self, icon, text, cmd, selected=False):
+    def _nav_item(self, icon, text, cmd, selected=False, color=None):
         # We'll use a local reference to determine color
         is_selected = selected
         def _on_click(e):
@@ -391,8 +412,8 @@ class DabFletApp:
         item = ft.Container(
             data="nav",
             content=ft.Row([
-                ft.Icon(icon, color=ft.Colors.GREEN if selected else None, size=20),
-                ft.Text(text, color=ft.Colors.GREEN if selected else None, weight="bold", size=14)
+                ft.Icon(icon, color=color or (ft.Colors.GREEN if selected else None), size=20),
+                ft.Text(text, color=color or (ft.Colors.GREEN if selected else None), weight="bold", size=14)
             ], alignment=ft.MainAxisAlignment.START),
             padding=ft.Padding(left=20, top=12, right=0, bottom=12),
             border_radius=10,
@@ -524,10 +545,21 @@ class DabFletApp:
         else:
             self._show_banner(f"Signup failed: {msg}", ft.Colors.RED_700)
 
-    def _handle_login(self):
-        success, msg = self.api.login(self.login_email.value, self.login_pass.value)
+    def _handle_login(self, email=None, password=None, is_auto=False):
+        login_email = email or self.login_email.value
+        login_pass = password or self.login_pass.value
+        
+        if not login_email or not login_pass:
+            self._show_banner("Email and password are required", ft.Colors.RED_700)
+            return
+
+        success, msg = self.api.login(login_email, login_pass)
         if success: 
-            self._show_banner(f"Welcome back, {self.api.user.get('username')}!", ft.Colors.GREEN)
+            if not is_auto:
+                self._show_banner(f"Welcome back, {self.api.user.get('username')}!", ft.Colors.GREEN)
+                # Persist credentials on successful manual login
+                self.settings.set_auth_credentials(login_email, login_pass)
+            
             # Preload libraries in background
             def _preload_libraries():
                 import time
@@ -536,7 +568,17 @@ class DabFletApp:
             threading.Thread(target=_preload_libraries, daemon=True).start()
             self._show_home()
         else:
-            self._show_banner(f"Login failed: {msg}", ft.Colors.RED_700)
+            if is_auto:
+                print(f"[Auto-Login] Failed: {msg}")
+                self._show_home() # Still show home (login screen will trigger)
+            else:
+                self._show_banner(f"Login failed: {msg}", ft.Colors.RED_700)
+
+    def _handle_logout(self):
+        self.api.user = None
+        self.settings.clear_auth_credentials()
+        self._show_banner("Logged out successfully", ft.Colors.BLUE_400)
+        self._show_home()
 
     def _handle_search(self):
         q = self.search_bar.value
@@ -2208,4 +2250,4 @@ def main(page: ft.Page):
     DabFletApp(page)
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets")
+    ft.app(main, assets_dir="assets")

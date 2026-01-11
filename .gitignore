@@ -27,8 +27,10 @@ MANIFEST
 venv/
 env/
 ENV/
+# Secrets
 .env
-
+.env.example
+main_build.py
 
 # Installer / Build Artifacts
 Output/
@@ -56,6 +58,6 @@ beatboss_installer_copy.iss
 !license.txt
 
 # Build Configs (Excluded by request)
-*.spec
-*.iss
+# *.spec
+# *.iss
 version_info.txt

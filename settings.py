@@ -166,3 +166,17 @@ class Settings:
                         print(f"Error deleting file: {e}")
         
         self.set("downloaded_tracks", {})
+
+    def get_auth_credentials(self) -> Optional[Dict[str, str]]:
+        """Get persisted authentication credentials"""
+        return self.settings.get("auth")
+
+    def set_auth_credentials(self, email: str, password: str):
+        """Persist authentication credentials"""
+        self.set("auth", {"email": email, "password": password})
+        
+    def clear_auth_credentials(self):
+        """Clear persisted authentication credentials"""
+        if "auth" in self.settings:
+            del self.settings["auth"]
+            self.save()

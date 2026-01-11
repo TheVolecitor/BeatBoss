@@ -3,8 +3,16 @@ import re
 
 class YouTubeAPI:
     def __init__(self, api_key, log_callback=None):
-        self.youtube = build('youtube', 'v3', developerKey=api_key)
+        self.api_key = api_key
         self.log_callback = log_callback
+        self.youtube = None
+        if api_key:
+            try:
+                self.youtube = build('youtube', 'v3', developerKey=api_key)
+            except Exception as e:
+                print(f"[YT_API] Initialization failed: {e}")
+        else:
+            print("[YT_API] WARNING: No API key provided. Search functionality will be disabled.")
 
     def _log(self, method, url, status, body=None):
         if self.log_callback:
@@ -23,6 +31,10 @@ class YouTubeAPI:
             return self._parse_playlist_to_results(query)
         
         # Otherwise do a video search
+        if not self.youtube:
+            print("[YT_API] Error: Cannot search, YouTube API not initialized.")
+            return []
+            
         try:
             request = self.youtube.search().list(
                 part="snippet",
@@ -71,6 +83,10 @@ class YouTubeAPI:
         next_page_token = None
         page_count = 0
         max_pages = 20  # Safety limit to prevent infinite loops
+
+        if not self.youtube:
+            print("[YT_API] Error: Cannot fetch playlist, YouTube API not initialized.")
+            return []
 
         try:
             while page_count < max_pages:

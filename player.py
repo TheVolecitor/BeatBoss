@@ -12,7 +12,7 @@ import os
 
 class AudioPlayer:
     def __init__(self):
-        self.instance = vlc.Instance("--no-xlib")
+        self.instance = vlc.Instance("--no-xlib", "--quiet", "--no-video", "--aout=directx")
         self.player = self.instance.media_player_new()
         self.current_track = None
         self.is_playing = False
