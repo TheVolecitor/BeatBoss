@@ -5,6 +5,15 @@
 BeatBoss is a desktop music player built with Python and Flet.
 For API documentation, refer to: [DAB API Docs](https://github.com/sixnine-dotdev/dab-api-docs)
 
+## Privacy Notice
+
+**Location Permission**: Windows may show that BeatBoss is requesting location access. This is a side effect of the Flet UI framework (which uses a browser engine internally) and **not** something our app uses or needs. 
+
+- **The app does NOT collect, use, or transmit your location**
+- You can safely deny this permission - it won't affect app functionality
+- The source code is fully open and contains zero geolocation API calls
+- This is a known limitation of Flet-based desktop applications
+
 ## Features
 *   Streaming from public sources
 *   Youtube Playlist Import
