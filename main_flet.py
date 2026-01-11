@@ -5,6 +5,8 @@ import re
 import requests
 import time
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
 from dab_api import DabAPI
 from player import AudioPlayer
 from media_controls import MediaControls
@@ -28,6 +30,44 @@ YT_API_KEY = os.getenv("YT_API_KEY")
 
 if not YT_API_KEY or "AIza" not in YT_API_KEY:
     print("WARNING: YouTube API Key not found or invalid! (Check .env file)")
+
+# Performance Optimization Utilities
+def debounce(wait_ms=300):
+    """Debounce decorator to prevent rapid successive calls"""
+    def decorator(func):
+        func._debounce_timer = None
+        func._debounce_lock = threading.Lock()
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            def call_func():
+                func(*args, **kwargs)
+            
+            with func._debounce_lock:
+                if func._debounce_timer:
+                    func._debounce_timer.cancel()
+                func._debounce_timer = threading.Timer(wait_ms / 1000.0, call_func)
+                func._debounce_timer.start()
+        
+        return wrapper
+    return decorator
+
+def throttle(wait_ms=100):
+    """Throttle decorator to limit call frequency"""
+    def decorator(func):
+        func._last_call = 0
+        func._lock = threading.Lock()
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            now = time.time()
+            with func._lock:
+                if now - func._last_call >= wait_ms / 1000.0:
+                    func._last_call = now
+                    return func(*args, **kwargs)
+        
+        return wrapper
+    return decorator
 
 class DabFletApp:
     def __init__(self, page: ft.Page):
@@ -92,6 +132,17 @@ class DabFletApp:
         # Theme colors
         self.current_theme = self.settings.get_theme()
         self._update_theme_colors()
+        
+        # Performance Optimization: Thread Pools
+        self.thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="worker")
+        self.image_pool = ThreadPoolExecutor(max_workers=5, thread_name_prefix="image")
+        self.active_futures = []  # Track futures to cancel on view change
+        
+        # Performance: Click guards and debouncing state
+        self._view_switching = False
+        self._last_view_switch = 0
+        self._pending_updates = set()  # Track which controls need updates
+        self._update_batch_timer = None
         
         # Audio Player Init
         self._setup_ui()
@@ -394,7 +445,17 @@ class DabFletApp:
     def _nav_item(self, icon, text, cmd, selected=False, color=None):
         # We'll use a local reference to determine color
         is_selected = selected
+        
         def _on_click(e):
+            # PERFORMANCE: Guard against rapid successive clicks
+            now = time.time()
+            if now - self._last_view_switch < 0.2:  # 200ms guard
+                return
+            self._last_view_switch = now
+            
+            # PERFORMANCE: Cancel pending operations
+            self._cancel_pending_operations()
+            
             # Update all nav items to unselected
             for item in self.sidebar_content.controls:
                 if isinstance(item, ft.Container) and hasattr(item, "data"):
@@ -406,8 +467,16 @@ class DabFletApp:
             e.control.content.controls[0].color = ft.Colors.GREEN
             e.control.content.controls[1].color = ft.Colors.GREEN
             e.control.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.GREEN)
-            self.page.update()
-            if cmd: cmd()
+            
+            # PERFORMANCE: Use control.update() instead of page.update()
+            try:
+                e.control.update()
+            except:
+                self.page.update()
+            
+            if cmd: 
+                # Execute command in thread pool to avoid blocking
+                self.thread_pool.submit(cmd)
 
         item = ft.Container(
             data="nav",
@@ -423,15 +492,34 @@ class DabFletApp:
         )
         return item
 
+    def _cancel_pending_operations(self):
+        """Cancel all pending futures from previous view"""
+        for future in self.active_futures:
+            future.cancel()
+        self.active_futures.clear()
+
     def _on_nav_hover(self, e):
+        # PERFORMANCE: Throttle hover events - only update every 100ms
+        now = time.time()
+        if not hasattr(self, '_last_hover_update'):
+            self._last_hover_update = 0
+        
+        if now - self._last_hover_update < 0.1:  # 100ms throttle
+            return
+        self._last_hover_update = now
+        
         # Only hover if not selected (check bgcolor for green)
         if e.control.bgcolor != ft.Colors.with_opacity(0.1, ft.Colors.GREEN):
             if e.data == "true":
                 e.control.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.WHITE)
             else:
                 e.control.bgcolor = ft.Colors.TRANSPARENT
-            if self.page:
-                self.page.update()
+            
+            # PERFORMANCE: Update only this control, not entire page
+            try:
+                e.control.update()
+            except:
+                pass  # Silently fail if control not attached
 
     def _show_search(self):
         self.current_view = "search"
@@ -584,6 +672,15 @@ class DabFletApp:
         q = self.search_bar.value
         if not q: return
         
+        # PERFORMANCE: Guard against rapid successive searches
+        now = time.time()
+        if hasattr(self, '_last_search_time') and now - self._last_search_time < 0.3:
+            return  # Ignore rapid re-searches (300ms guard)
+        self._last_search_time = now
+        
+        # PERFORMANCE: Cancel previous search if still running
+        self._cancel_pending_operations()
+        
         # Add to recent searches (keep last 5)
         if q not in self.recent_searches:
             self.recent_searches.insert(0, q)
@@ -616,7 +713,10 @@ class DabFletApp:
                 self.page.update()
 
             self.page.run_thread(_update_res)
-        threading.Thread(target=_req, daemon=True).start()
+        
+        # PERFORMANCE: Use thread pool instead of creating new thread
+        future = self.thread_pool.submit(_req)
+        self.active_futures.append(future)
 
     def _display_albums(self, albums):
         row = ft.Row(scroll=ft.ScrollMode.HIDDEN, spacing=20)
@@ -761,12 +861,32 @@ class DabFletApp:
                     ], spacing=0)
                 ]),
                 padding=12, border_radius=12,
-                on_hover=lambda e: (setattr(e.control, "bgcolor", "#1A1A1A" if e.data == "true" else ft.Colors.TRANSPARENT), e.control.update() if e.control.page else None)
+                on_hover=lambda e: self._on_track_hover(e)  # OPTIMIZED: Use throttled method
             )
             grid.controls.append(row)
             if t.get("albumCover"): self._load_art(t["albumCover"], track_img)
         self.viewport.controls.append(grid)
         self.page.update()
+    
+    def _on_track_hover(self, e):
+        """OPTIMIZED: Throttled hover handler for track rows"""
+        now = time.time()
+        if not hasattr(self, '_last_track_hover'):
+            self.last_track_hover = 0
+        
+        # PERFORMANCE: Skip if hovering too frequently (100ms throttle)
+        if now - self._last_track_hover < 0.1:
+            return
+        self._last_track_hover = now
+        
+        # Update background
+        e.control.bgcolor = "#1A1A1A" if e.data == "true" else ft.Colors.TRANSPARENT
+        
+        # PERFORMANCE: Update only this control
+        try:
+            e.control.update()
+        except:
+            pass
 
     def _play_from_list(self, tracks, idx):
         self.queue = tracks
@@ -774,22 +894,40 @@ class DabFletApp:
         self._play_track(tracks[idx])
 
     def _load_art(self, url, container):
+        """OPTIMIZED: Use thread pool instead of creating unlimited threads"""
+        if not url:
+            return
+            
+        # PERFORMANCE: Check cache first
+        if url in self.image_cache:
+            try:
+                container.content = ft.Image(src=url, fit=ft.BoxFit.COVER, border_radius=5)
+                if container.page:
+                    container.update()
+                return
+            except:
+                pass
+        
         def _task():
-            with self.art_semaphore:
-                try:
-                    if not url: return
-                    # Fetching art can be slow, we set content first then update if attached
-                    def _sync():
-                        try:
-                            container.content = ft.Image(src=url, fit=ft.BoxFit.COVER, border_radius=5)
-                            if container.page:
-                                container.update()
-                            elif self.page:
-                                self.page.update()
-                        except: pass
+            # PERFORMANCE: Controlled thread pool execution
+            try:
+                def _sync():
+                    try:
+                        container.content = ft.Image(src=url, fit=ft.BoxFit.COVER, border_radius=5)
+                        self.image_cache[url] = True  # Mark as cached
+                        if container.page:
+                            container.update()
+                    except:
+                        pass
+                
+                if hasattr(self, 'page') and self.page:
                     self.page.run_thread(_sync)
-                except: pass
-        threading.Thread(target=_task, daemon=True).start()
+            except:
+                pass
+        
+        # PERFORMANCE: Submit to image pool (max 5 concurrent) instead of creating unlimited threads
+        future = self.image_pool.submit(_task)
+        self.active_futures.append(future)
     
     def _play_track_from_list(self, tracks, index):
         """Play a single track - only add that track to queue"""
@@ -900,9 +1038,11 @@ class DabFletApp:
                             )
                         self.windows_media.set_playback_status(True)
                         
-                        # Fetch lyrics
+                        # Fetch lyrics - use thread pool
                         self.fetching_lyrics = True
-                        threading.Thread(target=self._fetch_lyrics, args=(track,), daemon=True).start()
+                        future = self.thread_pool.submit(self._fetch_lyrics, track)
+                        self.active_futures.append(future)
+                        
                         self.page.update()
                     except Exception as e:
                         print(f"UI Sync error: {e}")
@@ -916,7 +1056,9 @@ class DabFletApp:
                 self.page.run_thread(_error)
                 print(f"Playback task error: {e}")
                 
-        threading.Thread(target=_task, daemon=True).start()
+        # PERFORMANCE: Use thread pool instead of creating new thread
+        future = self.thread_pool.submit(_task)
+        self.active_futures.append(future)
 
     def _parse_lrc(self, lrc_text):
         import re
