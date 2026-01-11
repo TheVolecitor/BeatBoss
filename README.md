@@ -72,6 +72,21 @@ Once setup is complete, run the player with:
 python main_build.py
 ```
 
+## Building Executable
+
+To create a standalone executable and installer:
+
+1. **Build the executable**
+   ```bash
+   .\clean_rebuild.bat
+   ```
+   This will create `BeatBoss.exe` in the `dist` folder.
+
+2. **Create installer (optional)**
+   - Install [Inno Setup](https://jrsoftware.org/isdl.php)
+   - Open `beatboss_installer.iss` with Inno Setup Compiler
+   - Click "Compile" to generate the installer in the `Output` folder
+
 ## Legal Disclaimer
 
 This application (BeatBoss) does not host, store, or distribute any music files or copyrighted content. It functions solely as a client-side player that streams content available publicly on the internet. All rights regarding audio content belong to their respective owners.
