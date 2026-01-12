@@ -1370,6 +1370,7 @@ class DabFletApp:
         
         # Play next track
         if 0 <= self.current_track_index < len(self.queue):
+            self.queue_cache_dirty = True  # Invalidate cache on track change
             self._play_track(self.queue[self.current_track_index])
 
     def _add_to_queue(self, track):
