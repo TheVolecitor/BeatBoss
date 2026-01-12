@@ -2016,9 +2016,10 @@ class DabFletApp:
         # Secondary text/icon color (muted)
         sec_col = ft.Colors.BLACK_54 if is_light else ft.Colors.WHITE_30
         
-        # Update Player Bar Background
+        # Update Player Bar Background - CRITICAL FIX
         if hasattr(self, 'card_bg'):
-             self.player_bar.bgcolor = ft.Colors.with_opacity(0.9, self.card_bg)
+            self.player_bar.bgcolor = ft.Colors.with_opacity(0.95, self.card_bg)
+            self.player_bar.update()  # Force update
         
     def _get_text_color(self):
         return ft.Colors.BLACK if self.current_theme == "light" else ft.Colors.WHITE
@@ -2041,47 +2042,60 @@ class DabFletApp:
             self.btn_queue.current.icon_color = ft.Colors.GREEN if is_active else self._get_secondary_color()
             self.btn_queue.current.update()
             
-    def _update_player_bar_theme(self):
-        """Update player bar colors based on theme"""
+    def _update_all_player_controls_theme(self):
+        """Update all player controls for theme change - comprehensive update"""
         is_light = self.current_theme == "light"
         text_col = self._get_text_color()
         sec_col = self._get_secondary_color()
 
         # Update Text Controls
-        if hasattr(self, 'track_title'): self.track_title.color = text_col
-        if hasattr(self, 'track_artist'): self.track_artist.color = sec_col
-        if hasattr(self, 'time_cur'): self.time_cur.color = sec_col
-        if hasattr(self, 'time_end'): self.time_end.color = sec_col
-        
-        # Force update of text controls
-        if hasattr(self, 'track_title') and self.track_title.page: self.track_title.update()
-        if hasattr(self, 'track_artist') and self.track_artist.page: self.track_artist.update()
-        if hasattr(self, 'time_cur') and self.time_cur.page: self.time_cur.update()
-        if hasattr(self, 'time_end') and self.time_end.page: self.time_end.update()
+        if hasattr(self, 'track_title'): 
+            self.track_title.color = text_col
+            self.track_title.update()
+        if hasattr(self, 'track_artist'): 
+            self.track_artist.color = sec_col
+            self.track_artist.update()
+        if hasattr(self, 'time_cur'): 
+            self.time_cur.color = sec_col
+            self.time_cur.update()
+        if hasattr(self, 'time_end'): 
+            self.time_end.color = sec_col
+            self.time_end.update()
         
         # Update Slider
         if hasattr(self, 'seek_slider'):
             self.seek_slider.inactive_color = ft.Colors.BLACK12 if is_light else ft.Colors.WHITE_10
+            self.seek_slider.update()
         
         # Update Buttons
-        # Direct refs
-        if hasattr(self, 'play_btn'): self.play_btn.icon_color = text_col
-        if hasattr(self, 'shuffle_btn'): self.shuffle_btn.icon_color = sec_col
-        if hasattr(self, 'repeat_btn'): self.repeat_btn.icon_color = sec_col
+        if hasattr(self, 'play_btn'): 
+            self.play_btn.icon_color = text_col
+            self.play_btn.update()
+        if hasattr(self, 'shuffle_btn'): 
+            shuffle_color = ft.Colors.GREEN if self.shuffle_enabled else sec_col
+            self.shuffle_btn.icon_color = shuffle_color
+            self.shuffle_btn.update()
+        if hasattr(self, 'repeat_btn'):
+            loop_color = ft.Colors.GREEN if self.loop_mode != "off" else sec_col
+            self.repeat_btn.icon_color = loop_color
+            self.repeat_btn.update()
         
         # Refs via assign_ref (need .current)
         if hasattr(self, 'btn_prev') and self.btn_prev.current:
             self.btn_prev.current.icon_color = text_col
+            self.btn_prev.current.update()
         if hasattr(self, 'btn_next') and self.btn_next.current:
             self.btn_next.current.icon_color = text_col
+            self.btn_next.current.update()
         if hasattr(self, 'btn_lyrics') and self.btn_lyrics.current:
             self.btn_lyrics.current.icon_color = sec_col
+            self.btn_lyrics.current.update()
         if hasattr(self, 'btn_queue') and self.btn_queue.current:
             self.btn_queue.current.icon_color = sec_col
+            self.btn_queue.current.update()
         if hasattr(self, 'btn_vol') and self.btn_vol.current:
             self.btn_vol.current.icon_color = sec_col
-            
-        self.page.update()
+            self.btn_vol.current.update()
 
     def _show_banner(self, message, bgcolor=ft.Colors.GREEN, duration=3):
         """Show a notification banner at the top of the viewport"""
@@ -2197,6 +2211,7 @@ class DabFletApp:
                     
                     # Update player bar theme
                     self._update_player_bar_theme()
+                    self._update_all_player_controls_theme()
                 
                 theme_switch = ft.Switch(
                     label="Light Mode",
