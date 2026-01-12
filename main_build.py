@@ -136,6 +136,12 @@ class DabFletApp:
         self._pending_updates = set()  # Track which controls need updates
         self._update_batch_timer = None
         
+        # View Caching for instant switching (RAM optimization)
+        self.queue_view_cache = None
+        self.lyrics_view_cache = None
+        self.queue_cache_dirty = True  # Rebuild on next view
+        self.lyrics_cache_dirty = True
+        
         # Audio Player Init
         self._setup_ui()
         
@@ -1369,6 +1375,7 @@ class DabFletApp:
     def _add_to_queue(self, track):
         try:
             self.queue.append(track)
+            self.queue_cache_dirty = True  # Invalidate cache
             # Show toast notification
             self._show_banner(f"Added to play queue: {track.get('title')}", ft.Colors.BLUE_400)
         except Exception as e:
@@ -1382,48 +1389,119 @@ class DabFletApp:
             return
         
         self.current_view = "queue"
-        # Instant clear and header display
+        
+        # Use cached view if available and not dirty
+        if self.queue_view_cache and not self.queue_cache_dirty:
+            self.viewport.controls.clear()
+            self.viewport.controls.extend(self.queue_view_cache)
+            self._update_player_bar_buttons()
+            self.page.update()
+            return
+        
+        # Build view (will be cached)
         try:
             self.viewport.controls.clear()
-            self.viewport.controls.append(ft.Row([
+            
+            # Header
+            header = ft.Row([
                 ft.Text("Current Queue", size=32, weight="bold", expand=True),
-                ft.TextButton("Clear Queue", on_click=lambda _: setattr(self, 'queue', []) or self._show_queue())
-            ]))
+                ft.TextButton("Clear Queue", on_click=lambda _: self._clear_queue())
+            ])
+            self.viewport.controls.append(header)
             
             if not self.queue:
-                self.viewport.controls.append(ft.Text("Queue is empty", color=ft.Colors.WHITE_30))
+                empty_msg = ft.Text("Queue is empty", color=self._get_secondary_color())
+                self.viewport.controls.append(empty_msg)
+                self.queue_view_cache = [header, empty_msg]
+                self.queue_cache_dirty = False
                 self.page.update()
             else:
-                # Show loading indicator immediately
-                # Update active button states
+                # Build track list with remove buttons
+                track_list = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
+                
+                for i, track in enumerate(self.queue):
+                    # Check if currently playing
+                    is_current = (i == self.current_track_index)
+                    
+                    track_row = ft.Container(
+                        content=ft.Row([
+                            # Track number/playing indicator
+                            ft.Container(
+                                content=ft.Icon(ft.Icons.PLAY_ARROW, color=ft.Colors.GREEN) if is_current else ft.Text(f"{i+1}", size=16),
+                                width=40,
+                                alignment=ft.alignment.center
+                            ),
+                            # Track info
+                            ft.Column([
+                                ft.Text(track.get("title", "Unknown"), weight="bold" if is_current else "normal", size=16, max_lines=1),
+                                ft.Text(track.get("artist", "Unknown"), size=12, color=self._get_secondary_color(), max_lines=1)
+                            ], spacing=2, expand=True),
+                            # Remove button
+                            ft.IconButton(
+                                ft.Icons.CLOSE,
+                                icon_color=ft.Colors.RED_400,
+                                tooltip="Remove from queue",
+                                on_click=lambda _, idx=i: self._remove_from_queue(idx),
+                                icon_size=18
+                            )
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        bgcolor=ft.Colors.GREEN_900 if is_current else self.card_bg,
+                        padding=ft.Padding(15, 10, 15, 10),
+                        border_radius=10,
+                        on_click=lambda _, idx=i: self._play_from_queue(idx)
+                    )
+                    track_list.controls.append(track_row)
+                
+                self.viewport.controls.append(track_list)
+                
+                # Cache the view
+                self.queue_view_cache = [header, track_list]
+                self.queue_cache_dirty = False
+                
                 self._update_player_bar_buttons()
-                loading_container = ft.Container(
-                    content=ft.ProgressRing(width=30, height=30),
-                    alignment=ft.Alignment(0, 0),  # Fixed: was ft.alignment.center
-                    padding=ft.Padding(0, 50, 0, 50)
-                )
-                self.viewport.controls.append(loading_container)
                 self.page.update()
                 
-                # Load tracks in background
-                def _load():
-                    try:
-                        # Remove loading indicator before displaying tracks
-                        def _remove_and_display():
-                            try:
-                                if loading_container in self.viewport.controls:
-                                    self.viewport.controls.remove(loading_container)
-                                    self.page.update()
-                            except: pass
-                        self.page.run_thread(_remove_and_display)
-                        # Small delay to ensure loading is removed
-                        time.sleep(0.1)
-                        self._display_tracks(self.queue)
-                    except Exception as e:
-                        print(f"Queue display error: {e}")
-                threading.Thread(target=_load, daemon=True).start()
         except Exception as e:
             print(f"Show queue error: {e}")
+    
+    def _remove_from_queue(self, index):
+        """Remove track from queue at specific index"""
+        try:
+            if 0 <= index < len(self.queue):
+                removed_track = self.queue.pop(index)
+                
+                # Adjust current index if needed
+                if index < self.current_track_index:
+                    self.current_track_index -= 1
+                elif index == self.current_track_index and self.queue:
+                    # If we removed currently playing track, play next
+                    self._play_track(self.queue[self.current_track_index])
+                
+                # Mark cache as dirty and rebuild
+                self.queue_cache_dirty = True
+                if self.current_view == "queue":
+                    self._show_queue()
+                    
+                self._show_banner(f"Removed: {removed_track.get('title', 'track')}", ft.Colors.ORANGE)
+        except Exception as e:
+            print(f"Remove from queue error: {e}")
+    
+    def _clear_queue(self):
+        """Clear all tracks from queue"""
+        self.queue = []
+        self.current_track_index = -1
+        self.queue_cache_dirty = True
+        self._show_queue()
+        self._show_banner("Queue cleared", ft.Colors.ORANGE)
+    
+    def _play_from_queue(self, index):
+        """Play specific track from queue"""
+        if 0 <= index < len(self.queue):
+            self.current_track_index = index
+            self._play_track(self.queue[index])
+            # Rebuild to show new current track
+            self.queue_cache_dirty = True
+            self._show_queue()
 
     def _prev_track(self):
         if self.current_track_index > 0:
@@ -2499,7 +2577,17 @@ class DabFletApp:
         threading.Thread(target=_task, daemon=True).start()
 
     def _on_keyboard(self, e: ft.KeyboardEvent):
-        """Handle keyboard shortcuts"""
+        """Handle keyboard shortcuts - ignore if typing in text field"""
+        # Check if user is typing in a text field
+        try:
+            if hasattr(self.page, 'focused_control') and self.page.focused_control:
+                focused = self.page.focused_control
+                # Don't handle shortcuts if focused on TextField
+                if isinstance(focused, ft.TextField):
+                    return
+        except:
+            pass  # If check fails, allow shortcuts
+        
         if e.key == "Space" or e.key == " ":
             self._toggle_playback()
         elif e.key == "Arrow Right":
