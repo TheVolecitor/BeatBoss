@@ -30,7 +30,6 @@ ENV/
 # Secrets
 .env
 .env.example
-main_build.py
 
 # Installer / Build Artifacts
 Output/
