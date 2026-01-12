@@ -106,7 +106,8 @@ class AudioPlayer:
                             ffmpeg_cmd,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            timeout=30
+                            timeout=30,
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
                         )
                         
                         if result.returncode == 0 and os.path.exists(self.temp_file):
