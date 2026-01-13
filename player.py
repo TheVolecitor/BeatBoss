@@ -35,6 +35,20 @@ def _setup_vlc_path():
                 os.environ['PYTHON_VLC_LIB_PATH'] = p
                 print(f"[VLC] Linux: Found and set libvlc at {p}")
                 return p
+        
+        # Fallback: Try to find any libvlc.so using ldconfig or find
+        try:
+            print("[VLC] Searching system using ldconfig...")
+            res = subprocess.run(['ldconfig', '-p'], capture_output=True, text=True)
+            for line in res.stdout.splitlines():
+                if 'libvlc.so' in line and '=>' in line:
+                    path = line.split('=>')[1].strip()
+                    if os.path.exists(path):
+                        os.environ['PYTHON_VLC_LIB_PATH'] = path
+                        print(f"[VLC] Linux: Found via ldconfig at {path}")
+                        return path
+        except:
+            pass
 
     print("[VLC] Using system VLC (PATH search)")
     return None
@@ -168,16 +182,19 @@ class AudioPlayer:
                         if result.returncode == 0 and os.path.exists(self.temp_file):
                             # Play the converted file with VLC
                             print(f"[VLC] Playing converted file")
-                            media = self.instance.media_new(self.temp_file)
-                            self.player.set_media(media)
-                            self.player.audio_set_volume(self._volume)
-                            self.player.play()
-                            
-                            time.sleep(0.3)
-                            
-                            self.current_track = track_info
-                            self.is_playing = True
-                            print("[FFmpeg→VLC] ✓ Playback started")
+                            if self.instance and self.player:
+                                media = self.instance.media_new(self.temp_file)
+                                self.player.set_media(media)
+                                self.player.audio_set_volume(self._volume)
+                                self.player.play()
+                                
+                                time.sleep(0.3)
+                                
+                                self.current_track = track_info
+                                self.is_playing = True
+                                print("[FFmpeg→VLC] ✓ Playback started")
+                            else:
+                                print(f"[Player] Error: VLC not initialized, cannot play {self.temp_file}")
                             return
                         else:
                             print("[FFmpeg] Conversion failed, trying direct VLC...")
