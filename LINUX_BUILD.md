@@ -196,3 +196,24 @@ For a single-file portable executable that works on most Linux distros (no insta
     ./BeatBoss-x86_64.AppImage
     ```
 
+## 6. Testing & Verification
+
+It is best to test both builds to ensure portability and correctness.
+
+### Testing the AppImage (Portable)
+Run it from the terminal to see debug logs (crucial for catching VLC errors):
+```bash
+./BeatBoss-x86_64.AppImage
+```
+
+### Testing the DEB (Installed)
+1.  **Install:** `sudo apt install ./beatboss_1.2.0_amd64.deb`
+2.  **Run (Terminal):** `beatboss`
+    *   This runs the launcher script at `/usr/bin/beatboss`.
+3.  **Run (GUI):** Search "BeatBoss" in your app menu.
+4.  **Remove:** `sudo apt remove beatboss`
+
+### Common Troubleshooting
+*   **"VLC not initialized":** Run `./bundle_linux_vlc.sh` again and rebuild.
+*   **"GLIBC not found":** You built on a newer Linux version (e.g., Kali Rolling) than the one you are testing on (e.g., Ubuntu 20.04). Build on the oldest targeted OS.
+
