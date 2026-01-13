@@ -60,8 +60,9 @@ beatboss_installer_copy.iss
 #main_test_flet.py
 #player_flet.py
 
-# Bundled VLC (large binary files, download separately)
+# Bundled VLC and ffmpeg (large binary files, download separately)
 vlc/
+ffmpeg
 
 # Build Configs (Excluded by request)
 # *.spec

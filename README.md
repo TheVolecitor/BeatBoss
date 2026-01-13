@@ -46,7 +46,11 @@ To build the executable and bundle dependencies correctly, follow these steps:
     *   Structure should be: `vlc/vlc.exe`, `vlc/plugins/`, etc.
 3.  **FFmpeg (Essential for Local Playback)**
     *   Download: [ffmpeg-master-latest-win64-gpl.zip](https://github.com/BtbN/FFmpeg-Builds/releases)
-    *   Copy `ffmpeg.exe` and all `.dll` files from the `bin/` folder to the project root.
+    *   Copy `ffmpeg.exe` and all `.dll` files from the `bin/` folder to ffmpeg folder in the parent directory, the structure can be as follows
+      ```bash
+      ../ffmpeg/bin/ffmpeg.exe
+      ../ffmpeg/ffmpeg.exe
+      ```
     *   Required DLLs include: `avcodec-*.dll`, `avformat-*.dll`, `avutil-*.dll`, `swresample-*.dll`, `swscale-*.dll`.
 
 > [!IMPORTANT]
