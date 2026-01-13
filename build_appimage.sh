@@ -23,21 +23,6 @@ echo "📦 Copying files..."
 cp -r "$SOURCE_BIN"/* "$BUILD_DIR/usr/bin/"
 cp assets/logo.png "$BUILD_DIR/beatboss.png"
 
-# Fix: Flet isn't always at the root, so valid FLET_VIEW_PATH fails.
-# We find the bundled flet binary and copy it to where we tell Flet to look.
-echo "🔍 Searching for bundles Flet binary..."
-FLET_BIN=$(find "$BUILD_DIR/usr/bin" -type f -name "flet" | head -n 1)
-
-if [ -n "$FLET_BIN" ]; then
-    echo "✅ Found Flet binary at: $FLET_BIN"
-    # Copy it to /usr/bin/flet so FLET_VIEW_PATH finds it
-    cp "$FLET_BIN" "$BUILD_DIR/usr/bin/flet"
-    chmod +x "$BUILD_DIR/usr/bin/flet"
-else
-    echo "⚠️  WARNING: Could not find 'flet' binary. App might crash."
-    # Try generic fallback just in case
-fi
-
 # Download AppImageTool if missing
 if [ ! -f "appimagetool-x86_64.AppImage" ]; then
     echo "⬇️  Downloading appimagetool..."
@@ -53,7 +38,7 @@ SELF=\$(readlink -f "\$0")
 HERE=\${SELF%/*}
 export PATH="\${HERE}/usr/bin:\${PATH}"
 export LD_LIBRARY_PATH="\${HERE}/usr/bin:\${LD_LIBRARY_PATH}"
-export FLET_VIEW_PATH="\${HERE}/usr/bin"
+# Note: We do NOT set FLET_VIEW_PATH, letting Flet find its own binary relative to the executable.
 exec "\${HERE}/usr/bin/BeatBoss" "\$@"
 EOF
 chmod +x "$BUILD_DIR/AppRun"
