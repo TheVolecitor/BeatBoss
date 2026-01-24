@@ -9,3 +9,4 @@ winrt-Windows-Storage-Streams; sys_platform == 'win32'
 winrt-Windows-Foundation; sys_platform == 'win32'
 colorama
 python-dotenv
+flet[all]==0.80.1
