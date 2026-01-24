@@ -220,6 +220,11 @@ class AudioPlayer:
     def play_url(self, url, track_info=None):
         with self.lock:
             try:
+                # Stop any previous process immediately
+                print(f"[Player][{threading.get_ident()}] Stop previous before playing...")
+                self._stop_ffmpeg()
+                self._cleanup_temp()
+                
                 is_local = url and not url.startswith(("http://", "https://"))
 
                 # For local files, convert with ffmpeg to temp file
@@ -228,15 +233,11 @@ class AudioPlayer:
 
                     file_path = Path(url)
                     if not file_path.exists():
-                        print(f"[Player] File not found: {url}")
+                        print(f"[Player][{threading.get_ident()}] File not found: {url}")
                         self.is_playing = False
                         return
 
-                    print(f"[FFmpeg→VLC] Converting: {file_path.name}")
-
-                    # Stop any previous process
-                    self._stop_ffmpeg()
-                    self._cleanup_temp()
+                    print(f"[Player][{threading.get_ident()}] FFmpeg converting: {file_path.name}")
 
                     # Create temporary WAV file
                     self.temp_file = tempfile.mktemp(suffix=".wav")
@@ -260,74 +261,93 @@ class AudioPlayer:
                     ]
 
                     try:
-                        # Run ffmpeg conversion
-                        print(f"[FFmpeg] Converting to WAV...")
-                        result = subprocess.run(
+                        # Run ffmpeg conversion using Popen instead of run for control
+                        print(f"[Player][{threading.get_ident()}] Starting FFmpeg process...")
+                        # Startupinfo to hide console window on Windows
+                        startupinfo = None
+                        if os.name == 'nt':
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            
+                        self.ffmpeg_process = subprocess.Popen(
                             ffmpeg_cmd,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            timeout=30,
-                            creationflags=subprocess.CREATE_NO_WINDOW
-                            if os.name == "nt"
-                            else 0,
+                            startupinfo=startupinfo
                         )
+                        
+                        pid = self.ffmpeg_process.pid
+                        print(f"[Player][{threading.get_ident()}] FFmpeg PID: {pid}")
 
-                        if result.returncode == 0 and os.path.exists(self.temp_file):
-                            # Play the converted file with VLC
-                            print(f"[VLC] Playing converted file")
-                            if self.instance and self.player:
-                                media = self.instance.media_new(self.temp_file)
-                                self.player.set_media(media)
-                                self.player.audio_set_volume(self._volume)
-                                self.player.play()
+                        # Wait for completion with timeout, but allow other threads to cancel us via _stop_ffmpeg
+                        try:
+                            # We play a trick here: we wait synchronously but because we stored self.ffmpeg_process,
+                            # another thread calling stop() can kill it, which will make wait() return or raise.
+                            print(f"[Player][{threading.get_ident()}] Waiting for FFmpeg...")
+                            self.ffmpeg_process.wait(timeout=30)
+                            print(f"[Player][{threading.get_ident()}] FFmpeg finished. Return code: {self.ffmpeg_process.returncode}")
+                            
+                            if self.ffmpeg_process.returncode == 0 and os.path.exists(self.temp_file):
+                                # Play the converted file with VLC
+                                print(f"[Player][{threading.get_ident()}] VLC Playing converted file")
+                                if self.instance and self.player:
+                                    media = self.instance.media_new(self.temp_file)
+                                    self.player.set_media(media)
+                                    self.player.audio_set_volume(self._volume)
+                                    self.player.play()
 
-                                time.sleep(0.3)
+                                    # Small delay to ensuring caching
+                                    time.sleep(0.1)
 
-                                self.current_track = track_info
-                                self.is_playing = True
-                                print("[FFmpeg→VLC] ✓ Playback started")
+                                    self.current_track = track_info
+                                    self.is_playing = True
+                                    print(f"[Player][{threading.get_ident()}] VLC Playback started")
+                                else:
+                                    print(
+                                        f"[Player][{threading.get_ident()}] Error: VLC not initialized"
+                                    )
+                                return
                             else:
-                                print(
-                                    f"[Player] Error: VLC not initialized, cannot play {self.temp_file}"
-                                )
-                            return
-                        else:
-                            print("[FFmpeg] Conversion failed, trying direct VLC...")
-
+                                print(f"[Player][{threading.get_ident()}] FFmpeg failed or cancelled.")
+                        except subprocess.TimeoutExpired:
+                            print(f"[Player][{threading.get_ident()}] FFmpeg Timeout expired, killing process.")
+                            self._stop_ffmpeg()
+                        except Exception as e:
+                            print(f"[Player][{threading.get_ident()}] FFmpeg wait error (cancelled?): {e}")
+                            
                     except FileNotFoundError:
                         print(
-                            "[FFmpeg] ERROR: ffmpeg not found. Install: winget install ffmpeg"
+                            f"[Player][{threading.get_ident()}] ERROR: ffmpeg not found."
                         )
-                        print("[FFmpeg] Falling back to direct VLC...")
                     except Exception as e:
-                        print(f"[FFmpeg] Error: {e}")
+                        print(f"[Player][{threading.get_ident()}] Error: {e}")
 
-                    # Fallback: try direct VLC playback
+                    # Fallback: try direct VLC playback (only if not cancelled explicitly)
+                    if not self.running: 
+                         print(f"[Player][{threading.get_ident()}] Player stopped, aborting fallback.")
+                         return
+
                     self._cleanup_temp()
                     url = str(file_path.absolute())
 
-                # Stop ffmpeg if switching to streaming
-                self._stop_ffmpeg()
-                self._cleanup_temp()
-
                 # Use VLC for streaming or fallback
                 if self.instance and self.player:
-                    print(f"[VLC] Loading: {url[:60]}...")
+                    print(f"[Player][{threading.get_ident()}] VLC Direct Loading: {url[:60]}...")
                     media = self.instance.media_new(url)
                     self.player.set_media(media)
                     self.player.audio_set_volume(self._volume)
                     self.player.play()
                 else:
-                    print("[Player] Error: VLC not initialized")
+                    print(f"[Player][{threading.get_ident()}] Error: VLC not initialized")
                     return
 
-                time.sleep(0.3)
+                time.sleep(0.1)
                 self.current_track = track_info
                 self.is_playing = True
-                print("[VLC] ✓ Playback started")
+                print(f"[Player][{threading.get_ident()}] VLC Playback started")
 
             except Exception as e:
-                print(f"[Player] Error: {e}")
+                print(f"[Player][{threading.get_ident()}] Global Error: {e}")
                 import traceback
 
                 traceback.print_exc()

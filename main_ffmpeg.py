@@ -8,7 +8,7 @@ from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from dab_api import DabAPI
-from player import AudioPlayer
+from player_ffmpeg import AudioPlayer
 from media_controls import MediaControls
 from yt_api import YouTubeAPI
 from settings import Settings
@@ -1044,15 +1044,17 @@ class DabFletApp:
                 self.queue = [tracks[index]]
                 self.current_track_index = 0
                 # Immediate visual feedback - show loading state
-                def _show_loading():
-                    try:
-                        self.track_title.value = "Loading..."
-                        self.track_artist.value = tracks[index].get('title', 'Track')
-                        if self.track_title.page:
-                            self.track_title.update()
-                            self.track_artist.update()
-                    except: pass
-                self.page.run_thread(_show_loading)
+                # REMOVED: Optimistic UI in _play_track handles this better and avoids race conditions.
+                # def _show_loading():
+                #     try:
+                #         self.track_title.value = "Loading..."
+                #         self.track_artist.value = tracks[index].get('title', 'Track')
+                #         if self.track_title.page:
+                #             self.track_title.update()
+                #             self.track_artist.update()
+                #     except: pass
+                # self.page.run_thread(_show_loading)
+                
                 # Start playback immediately in background
                 self._play_track(tracks[index])
         except Exception as e:

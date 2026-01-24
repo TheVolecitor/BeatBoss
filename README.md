@@ -105,18 +105,28 @@ python main_build.py
 
 ## Building Executable
 
-To create a standalone executable and installer:
+To create a standalone executable and installer, you have two options:
 
+### Method 1: Standard Build (Recommended - VLC)
+This method uses the stable VLC-based player.
 1. **Build the executable**
    ```bash
-   .\clean_rebuild.bat
+   pyinstaller beatboss.spec
    ```
-   This will create `BeatBoss.exe` in the `dist` folder.
+2. **Create installer**
+   - Open `beatboss_installer.iss` with Inno Setup.
+   - Click "Compile".
 
-2. **Create installer (optional)**
-   - Install [Inno Setup](https://jrsoftware.org/isdl.php)
-   - Open `beatboss_installer.iss` with Inno Setup Compiler
-   - Click "Compile" to generate the installer in the `Output` folder
+### Method 2: FFmpeg-Only Build (Experimental)
+This method uses `ffplay` directly and does not require VLC. It is **Windows-only** and may be less stable.
+1. **Prerequisites**: Ensure `ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` are in the project root.
+2. **Build the executable**
+   ```bash
+   pyinstaller beatboss_ffmpeg.spec
+   ```
+3. **Create installer**
+   - Open `beatboss_ffmpeg.iss` with Inno Setup.
+   - Click "Compile".
 
 ## Legal Disclaimer
 
