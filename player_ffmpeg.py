@@ -286,6 +286,9 @@ class AudioPlayer:
             # Pass preserve_state=True so stop_internal doesn't clear duration/time
             self.play_url(self.current_url, self.current_track, start_pos=ms, preserve_state=True)
             
+    def close(self):
+        """Cleanup resources"""
+        self.stop_internal(preserve_state=False)
+
     def _send_command(self, char):
-        # Deprecated: ffplay -nodisp doesn't support stdin commands reliable
         pass

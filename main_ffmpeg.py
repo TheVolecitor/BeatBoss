@@ -15,6 +15,7 @@ from settings import Settings
 from download_manager import DownloadManager
 from windows_media import WindowsMediaControls
 from dotenv import load_dotenv
+import atexit
 
 # Hardcoded YouTube API Key for Build (NOT for Git)
 YT_API_KEY = "youtube api key here"
@@ -63,7 +64,7 @@ def throttle(wait_ms=100):
 class DabFletApp:
     def __init__(self, page: ft.Page):
         self.page = page
-        self.page.title = "BeatBoss Player"
+        self.page.title = "BeatBoss Player (FFmpeg)"
         self.page.theme_mode = ft.ThemeMode.DARK
         self.page.bgcolor = "#020202"
         self.page.padding = 0
@@ -146,6 +147,9 @@ class DabFletApp:
         
         # Audio Player Init
         self._setup_ui()
+        
+        # Cleanup on exit
+        atexit.register(self.player.close)
         
         # Keyboard handling (Space to toggle)
         self.page.on_keyboard_event = self._on_keyboard

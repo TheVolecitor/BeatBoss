@@ -1078,137 +1078,83 @@ class DabFletApp:
         self.page.run_thread(_task)
 
     def _play_track(self, track, is_retry=False):
-        # OPTIMISTIC UI: Update UI *immediately* before loading audio
-        # This makes the "next" button feel instant
-        
-        # 1. Immediate UI Update
-        try:
-            print(f"[UI][{threading.get_ident()}] Optimistic update for track: {track.get('title')}")
-            # Cancel any pending lyrics fetch to prevent mismatched lyrics
-            self.fetching_lyrics = False
-            
-            # Prepare UI data
-            title = track.get("title", "Unknown Title")
-            artist = track.get("artist", "Unknown Artist")
-            cover = track.get("image") or track.get("albumCover")
-            
-            self.track_title.value = title
-            self.track_artist.value = artist
-            self.play_btn.icon = ft.Icons.PAUSE_CIRCLE_FILLED
-            
-            # Reset timeline
-            self.time_cur.value = "0:00"
-            self.seek_slider.value = 0
-            # Reset hi-res info until confirmed
-            self.audio_quality_info.visible = False
-            
-            # Show "Loading..." indicator subtly if needed, or just let it play
-            # self.page.window_title = f"{title} - BeatBoss" # Optional
-            
-            # Reset lyrics
-            self.lyrics_data = []
-            self.current_lyric_idx = -1
-            if self.current_view == "lyrics" and hasattr(self, "lyrics_scroll"):
-                 # Clear lyrics view immediately if open
-                 self.lyrics_scroll.controls.clear()
-                 self.lyrics_scroll.controls.append(ft.Container(content=ft.Text("Loading...", size=18, color=self._get_secondary_color()), alignment=ft.Alignment(0,0), padding=50))
-                 self.lyrics_scroll.update()
-
-            # Load art immediately if possible
-            if cover: 
-                self._load_art(cover, self.track_art)
-                
-            # Update Windows media controls immediately (Optimistic)
-            if hasattr(self, 'windows_media'):
-                try:
-                    album_val = track.get("album")
-                    album_title = album_val.get("title") if isinstance(album_val, dict) else album_val
-                    self.windows_media.update_metadata(
-                        title=title,
-                        artist=artist,
-                        album=album_title,
-                        thumbnail_url=cover
-                    )
-                    self.windows_media.set_playback_status(True)
-                except: pass
-                
-            self.page.update()
-            
-        except Exception as e:
-            print(f"Optimistic UI error: {e}")
-
-        # 2. Background Audio Task
         def _task():
             try:
                 if not is_retry:
                     self.current_retry_count = 0
                     
                 track_id = track.get("id")
-                print(f"[Worker][{threading.get_ident()}] Starting play task for {track_id}")
-                
-                # Check if currently playing this track ID to avoid double loads? 
-                # No, _play_track implies a new play command.
                 
                 # Check if track is downloaded locally
                 local_path = self.download_manager.get_local_path(track_id)
                 
-                url = None
                 if local_path:
                     # Play from local file
                     print(f"[Local Playback] Playing from: {local_path}")
-                    url = local_path 
+                    url = local_path  # Player will handle local file path
                 else:
                     # Stream from API
                     print(f"[Stream Playback] Streaming track {track_id}")
                     url = self.api.get_stream_url(track_id)
-                
-                if not url:
-                    self._show_banner("Failed to get stream URL.", ft.Colors.RED_400)
-                    print(f"[Worker][{threading.get_ident()}] Failed to get URL for {track_id}")
-                    return
+                    if not url:
+                        self._show_banner("Failed to get stream URL. This track might be unavailable.", ft.Colors.RED_400)
+                        return
 
-                # This is the blocking call (FFmpeg conversion or Network stream)
-                # Now effectively backgrounded.
-                print(f"[Worker][{threading.get_ident()}] Calling player.play_url...")
                 self.player.play_url(url, track)
-                print(f"[Worker][{threading.get_ident()}] player.play_url returned")
                 
                 # Add to play history (keep last 5)
-                # Do this in background
                 if track not in self.play_history:
                     self.play_history.insert(0, track)
                     self.play_history = self.play_history[:5]
-                    self.settings.set_play_history(self.play_history) 
+                    self.settings.set_play_history(self.play_history)  # Persist immediately
                 
-                # 3. Post-Load Sync
-                # Finalize metadata that depends on actual file (like Hi-Res info if we verified it)
-                def _sync_final():
+                def _sync():
                     try:
-                         # Set Audio Quality Info
+                        self.track_title.value = track.get("title")
+                        self.track_artist.value = track.get("artist")
+                        
+                        # Set Audio Quality Info
                         q = track.get("audioQuality", {})
                         if q.get("isHiRes"):
                             self.audio_quality_info.value = f"{q.get('maximumBitDepth')}bit / {q.get('maximumSamplingRate')}kHz"
                             self.audio_quality_info.visible = True
                         else:
                             self.audio_quality_info.visible = False
+                            
+                        self.play_btn.icon = ft.Icons.PAUSE_CIRCLE_FILLED
+                        self.lyrics_data = []
+                        self.current_lyric_idx = -1
+                        if track.get("albumCover"): self._load_art(track["albumCover"], self.track_art)
                         
-                        self.audio_quality_info.update()
+                        # Update Windows media controls
+                        # Prepare metadata
+                        album_val = track.get("album")
+                        album_title = album_val.get("title") if isinstance(album_val, dict) else album_val
                         
-                        # Fetch lyrics now that audio is starting
+                        # Update Windows media controls
+                        if hasattr(self, 'windows_media'):
+                            self.windows_media.update_metadata(
+                                title=track.get("title"),
+                                artist=track.get("artist"),
+                                album=album_title,
+                                thumbnail_url=track.get("image") or track.get("albumCover")
+                            )
+                        self.windows_media.set_playback_status(True)
+                        
+                        # Fetch lyrics - use thread pool
                         self.fetching_lyrics = True
                         self._add_future(self.thread_pool.submit(self._fetch_lyrics, track))
-                        print(f"[UI][{threading.get_ident()}] Final sync complete for {track.get('title')}")
                         
+                        self.page.update()
                     except Exception as e:
-                        print(f"Post-load sync error: {e}")
+                        print(f"UI Sync error: {e}")
                 
-                self.page.run_thread(_sync_final)
-                
+                self.page.run_thread(_sync)
             except Exception as e:
                 self._show_banner(f"Playback Error: {str(e)}", ft.Colors.RED_400)
                 print(f"Playback task error: {e}")
                 
-        # SAFETY: Use thread pool
+        # PERFORMANCE: Use thread pool instead of creating new thread
         self._add_future(self.thread_pool.submit(_task))
 
     def _parse_lrc(self, lrc_text):
