@@ -793,30 +793,52 @@ class DabFletApp:
         self.viewport.controls.append(ft.Text(f"Results for '{q}'", size=24, weight="bold"))
         self.viewport.controls.append(ft.Container(height=20))
         
+        # Add Loading Indicator
+        self.viewport.controls.append(
+            ft.Row(
+                [
+                    ft.ProgressRing(color=ft.Colors.GREEN, width=30, height=30),
+                    ft.Text("Searching...", size=16, color=ft.Colors.GREY_400)
+                ], 
+                alignment=ft.MainAxisAlignment.CENTER
+            )
+        )
+        self.page.update()
+        
         def _req():
-            rs = self.api.search(q, search_type="all") # "all" returns albums too
-            
-            def _update_res():
-                if self.current_view != "search": return
-                if rs:
-                    # Display Albums Section
-                    if rs.get("albums"):
-                        self.viewport.controls.append(ft.Text("Albums", size=20, weight="bold"))
-                        self._display_albums(rs["albums"])
-                        self.viewport.controls.append(ft.Container(height=20))
+            try:
+                rs = self.api.search(q, search_type="all") # "all" returns albums too
                 
-                    # Display Tracks Section
-                    if rs.get("tracks"):
-                        self.viewport.controls.append(ft.Text("Tracks", size=20, weight="bold"))
-                        self._display_tracks(rs["tracks"])
+                def _update_res():
+                    if self.current_view != "search": return
                     
-                    if not rs.get("albums") and not rs.get("tracks"):
-                         self.viewport.controls.append(ft.Text("No results found."))
-                else:
-                    self.viewport.controls.append(ft.Text("No results found."))
-                self.page.update()
+                    # Clear loading indicator (and everything else) to rebuild cleanly
+                    self.viewport.controls.clear()
+                    self.viewport.controls.append(ft.Text(f"Results for '{q}'", size=24, weight="bold"))
+                    self.viewport.controls.append(ft.Container(height=20))
+                    
+                    if self.current_view != "search": return
+                    if rs:
+                        # Display Albums Section
+                        if rs.get("albums"):
+                            self.viewport.controls.append(ft.Text("Albums", size=20, weight="bold"))
+                            self._display_albums(rs["albums"])
+                            self.viewport.controls.append(ft.Container(height=20))
+                    
+                        # Display Tracks Section
+                        if rs.get("tracks"):
+                            self.viewport.controls.append(ft.Text("Tracks", size=20, weight="bold"))
+                            self._display_tracks(rs["tracks"])
+                        
+                        if not rs.get("albums") and not rs.get("tracks"):
+                             self.viewport.controls.append(ft.Text("No results found."))
+                    else:
+                        self.viewport.controls.append(ft.Text("No results found."))
+                    self.page.update()
 
-            self.page.run_thread(_update_res)
+                _update_res()
+            except Exception as e:
+                print(f"Search request error: {e}")
         
         # PERFORMANCE: Use thread pool instead of creating new thread
         self._add_future(self.thread_pool.submit(_req))
@@ -1044,15 +1066,18 @@ class DabFletApp:
                 self.queue = [tracks[index]]
                 self.current_track_index = 0
                 # Immediate visual feedback - show loading state
-                def _show_loading():
-                    try:
-                        self.track_title.value = "Loading..."
-                        self.track_artist.value = tracks[index].get('title', 'Track')
-                        if self.track_title.page:
-                            self.track_title.update()
-                            self.track_artist.update()
-                    except: pass
-                self.page.run_thread(_show_loading)
+                # Immediate visual feedback - OPTIMISTIC UI update
+                # Update with REAL track info immediately to prevent race conditions
+                try:
+                    self.track_title.value = tracks[index].get('title', 'Unknown Title')
+                    self.track_artist.value = tracks[index].get('artist', 'Unknown Artist')
+                    self.play_btn.icon = ft.Icons.PAUSE_CIRCLE_FILLED # Assume success
+                    if self.track_title.page:
+                        self.track_title.update()
+                        self.track_artist.update()
+                        self.play_btn.update()
+                except: 
+                    pass
                 # Start playback immediately in background
                 self._play_track(tracks[index])
         except Exception as e:
@@ -1583,7 +1608,12 @@ class DabFletApp:
         if self.cached_libraries:
             self._display_library_grid(self.cached_libraries)
         else:
-            self.viewport.controls.append(ft.ProgressBar(width=400, color=ft.Colors.GREEN))
+            self.viewport.controls.append(
+                ft.Column([
+                    ft.Text("Loading Library...", color=ft.Colors.GREY_400),
+                    ft.ProgressBar(width=400, color=ft.Colors.GREEN)
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+            )
         self.page.update()
         
         # Fetch updates in background
@@ -1613,8 +1643,9 @@ class DabFletApp:
             # Remove loading indicator if no changes but cache was empty
             elif not self.cached_libraries and self.current_view == "library":
                  def _clear_loading():
-                     if len(self.viewport.controls) > 1 and isinstance(self.viewport.controls[1], ft.ProgressBar):
+                     if len(self.viewport.controls) > 1:
                          self.viewport.controls.pop(1)
+                         self.viewport.controls.append(ft.Text("No collections found.", color=ft.Colors.GREY_500))
                          self.page.update()
                  self.page.run_thread(_clear_loading)
         

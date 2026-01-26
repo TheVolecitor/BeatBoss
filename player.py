@@ -142,49 +142,59 @@ import vlc
 
 class AudioPlayer:
     def __init__(self):
-        vlc_args = ["--no-xlib", "--quiet", "--no-video"]
-        if sys.platform == "win32":
-            vlc_args.append("--aout=directx")
-
-        self.instance = vlc.Instance(*vlc_args)
-        if not self.instance:
-            print(
-                "[Player] CRITICAL: Could not create VLC instance. Is libvlc installed?"
-            )
-            self.player = None
-        else:
-            try:
-                self.player = self.instance.media_player_new()
-            except Exception as e:
-                print(f"[Player] Error creating media player: {e}")
-                self.player = None
+        self.instance = None
+        self.player = None
         self.current_track = None
         self.is_playing = False
         self._volume = 80
         self.lock = threading.Lock()
         self.ffmpeg_process = None
         self.temp_file = None
-
-        # Events
-        self.on_track_end = None
-
-        # Event Manager
         self.events = None
-        if self.player:
-            try:
-                self.events = self.player.event_manager()
-                self.events.event_attach(
-                    vlc.EventType.MediaPlayerEndReached, self._on_vlc_end
-                )
-                self.events.event_attach(
-                    vlc.EventType.MediaPlayerEncounteredError, self._on_vlc_error
-                )
-            except Exception as e:
-                print(f"[Player] Error attaching events: {e}")
-                self.events = None
-
-        self.running = True
+        self.on_track_end = None
         self.on_error = None
+        self.running = True
+        
+        # Initialize VLC in background to avoid blocking startup
+        threading.Thread(target=self._init_vlc, daemon=True).start()
+
+    def _init_vlc(self):
+        try:
+            vlc_args = ["--no-xlib", "--quiet", "--no-video"]
+            if sys.platform == "win32":
+                vlc_args.append("--aout=directx")
+
+            self.instance = vlc.Instance(*vlc_args)
+            if not self.instance:
+                print("[Player] CRITICAL: Could not create VLC instance. Is libvlc installed?")
+                return
+
+            with self.lock:
+                try:
+                    self.player = self.instance.media_player_new()
+                except Exception as e:
+                    print(f"[Player] Error creating media player: {e}")
+                    self.player = None
+                    return
+
+                # Event Manager
+                if self.player:
+                    try:
+                        self.events = self.player.event_manager()
+                        self.events.event_attach(
+                            vlc.EventType.MediaPlayerEndReached, self._on_vlc_end
+                        )
+                        self.events.event_attach(
+                            vlc.EventType.MediaPlayerEncounteredError, self._on_vlc_error
+                        )
+                    except Exception as e:
+                        print(f"[Player] Error attaching events: {e}")
+                        self.events = None
+                        
+            print("[Player] VLC Initialized in background")
+            
+        except Exception as e:
+            print(f"[Player] VLC Init Error: {e}")
 
     def _on_vlc_error(self, event):
         print("[VLC] Error event received")
