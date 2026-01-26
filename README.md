@@ -1,62 +1,68 @@
 # BeatBoss
 
-[**Download Latest Release**](https://github.com/TheVolecitor/BeatBoss/releases)
+[Download Latest Release](https://github.com/TheVolecitor/BeatBoss/releases)
 
 BeatBoss is a modern, cross-platform music player built with Python and Flet.
-Designed for a premium experience on both Desktop (Windows/Linux) and Mobile (Android).
+Designed for a premium experience on Desktop (Windows/Linux) and Mobile (Android).
 
 ## Features
-*   ✨ **Streaming**: Stream from public music sources.
-*   📜 **Lyrics**: Real-time lyrics integration.
-*   📂 **Local Playback**: Play your downloaded tracks seamlessly.
-*   📱 **Mobile Optimized**: Clean 3-row player layout with collapse/expand support.
-*   🔄 **Sync**: Shuffle, Repeat, and Playback state synced across all platforms.
-*   🎨 **Dark Mode**: Sleek, glassmorphism-inspired UI.
+- Streaming: Stream from public music sources.
+- Lyrics: Real-time lyrics integration.
+- Local Playback: Play downloaded tracks seamlessly.
+- Mobile Optimized: Clean 3-row player layout with collapse/expand support.
+- State Sync: Shuffle, Repeat, and Playback state synced across all platforms.
+- Dark Mode: Sleek, glassmorphism-inspired UI.
 
 ## Prerequisites
 
 ### For End Users
-Just download and run the latest installer! No external setup required.
+Download and run the latest installer for your platform. No external dependencies required.
 
 ### For Developers
-1. **Python 3.10+**
-2. **Flutter SDK** (Required for building standalone apps)
-3. **Dependencies**:
+1. Python 3.10+
+2. Flutter SDK (Required for building standalone apps)
+3. Dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-## Installation & Development
+## Installation and Development
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/TheVolecitor/BeatBoss.git
-    cd BeatBoss
-    ```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/TheVolecitor/BeatBoss.git
+   cd BeatBoss
+   ```
 
-2.  **Run in Debug Mode**
-    ```bash
-    python main_build.py
-    ```
+2. Run in Debug Mode:
+   ```bash
+   python main_build.py
+   ```
 
 ## Building the Application
 
-BeatBoss uses the `flet build` system for easy packaging.
+BeatBoss uses the Flet build system for easy packaging across platforms.
 
 ### 1. Build for Windows
-This creates a standalone executable in `dist/windows`.
+Creates a standalone executable in `dist/windows`:
 ```bash
 flet build windows --main main_build.py --product "BeatBoss" --assets assets
 ```
 
 ### 2. Build for Android (APK)
-This creates a mobile-ready APK in `dist/apk`.
+Creates a mobile-ready APK in `dist/apk`:
 ```bash
 flet build apk --main main_build.py --product "BeatBoss" --org "com.volecitor" --assets assets
 ```
 
+### 3. Build for Linux
+Creates a standalone binary in `dist/linux`:
+```bash
+flet build linux --main main_build.py --product "BeatBoss" --assets assets
+```
+
 > [!TIP]
-> Use the provided `flet_rebuild.bat` on Windows to clean and rebuild with a single click.
+> Use the provided `flet_rebuild.bat` on Windows to clean and rebuild the desktop version with a single click.
 
 ## Legal Disclaimer
 
