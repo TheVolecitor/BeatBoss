@@ -1,0 +1,29 @@
+[project]
+name = "beatboss"
+version = "1.4.0"
+description = "A modern, cross-platform music player built with Flet."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "TheVolecitor", email = "thevolecitor@gmail.com" }]
+dependencies = [
+    "flet>=0.25.0",
+    "flet_audio>=0.1.0",
+    "requests",
+    "urllib3",
+    "google-api-python-client",
+    "pynput",
+    "colorama",
+    "python-dotenv",
+    "winrt-Windows-Media; sys_platform == 'win32'",
+    "winrt-Windows-Storage-Streams; sys_platform == 'win32'",
+    "winrt-Windows-Foundation; sys_platform == 'win32'"
+]
+
+[tool.flet.app]
+path = "src"
+
+[tool.flet]
+org = "com.thevolecitor"
+product = "BeatBoss"
+company = "TheVolecitor"
+copyright = "Copyright (C) 2026 by TheVolecitor"

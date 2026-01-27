@@ -13,7 +13,7 @@ from media_controls import MediaControls
 from yt_api import YouTubeAPI
 from settings import Settings
 from download_manager import DownloadManager
-from windows_media import WindowsMediaControls
+# from windows_media import WindowsMediaControls
 from dotenv import load_dotenv
 
 # Hardcoded YouTube API Key for Build (NOT for Git)
@@ -63,7 +63,7 @@ def throttle(wait_ms=100):
 class DabFletApp:
     def __init__(self, page: ft.Page):
         self.page = page
-        self.page.title = "BeatBoss Player"
+        self.page.title = "BeatBoss Player (Mobile)"
         self.page.theme_mode = ft.ThemeMode.DARK
         self.page.bgcolor = "#020202"
         self.page.padding = 0
@@ -87,7 +87,7 @@ class DabFletApp:
             self.page.bgcolor = "#020202"  # Dark background
         
         # Audio Player Init
-        self.player = AudioPlayer()
+        self.player = AudioPlayer(self.page)
         self.player.on_track_end = self._next_track
         self.player.on_error = self._on_player_error
         
@@ -144,6 +144,10 @@ class DabFletApp:
         self.queue_cache_dirty = True  # Rebuild on next view
         self.lyrics_cache_dirty = True
         
+        # Responsive UI state
+        self.is_mobile_view = False
+        self.page.on_resize = self._on_window_resize
+        
         # Audio Player Init
         self._setup_ui()
         
@@ -159,19 +163,18 @@ class DabFletApp:
         )
         self.media_controls.start()
         
-        # Windows Media Integration (SMTC)
-        # Windows Media Integration (SMTC) - Initialize in background to not block startup
-        def _init_smtc():
-            try:
-                self.windows_media = WindowsMediaControls(
-                    on_play_pause=self._toggle_playback,
-                    on_next=self._next_track,
-                    on_prev=self._prev_track
-                )
-            except Exception as e:
-                print(f"SMTC Init Error: {e}")
-
-        threading.Thread(target=_init_smtc, daemon=True).start()
+        # Windows Media Integration (SMTC) - Disabled for Flet Mobile
+        # def _init_smtc():
+        #     try:
+        #         self.windows_media = WindowsMediaControls(
+        #             on_play_pause=self._toggle_playback,
+        #             on_next=self._next_track,
+        #             on_prev=self._prev_track
+        #         )
+        #     except Exception as e:
+        #         print(f"SMTC Init Error: {e}")
+        #
+        # threading.Thread(target=_init_smtc, daemon=True).start()
         
         # Start periodic download progress refresh
         self._start_download_refresh_timer()
@@ -209,11 +212,34 @@ class DabFletApp:
                                 self.seek_slider.value = prog
                                 self.time_cur.value = self._format_ms(cur)
                                 self.time_end.value = self._format_ms(dur)
+                                
+                                # Update mobile controls too
+                                if hasattr(self, 'mobile_seek'):
+                                    self.mobile_seek.value = prog
+                                if hasattr(self, 'mobile_time_cur'):
+                                    self.mobile_time_cur.value = self.time_cur.value
+                                if hasattr(self, 'mobile_time_end'):
+                                    self.mobile_time_end.value = self.time_end.value
+                                
                                 self._sync_lyrics(cur)
                                 # Batch update only these controls
                                 self.seek_slider.update()
                                 self.time_cur.update()
                                 self.time_end.update()
+                                
+                                # Update mobile UI elements
+                                if hasattr(self, 'mobile_seek') and self.mobile_seek.page:
+                                    self.mobile_seek.update()
+                                if hasattr(self, 'mobile_time_cur') and self.mobile_time_cur.page:
+                                    self.mobile_time_cur.update()
+                                if hasattr(self, 'mobile_time_end') and self.mobile_time_end.page:
+                                    self.mobile_time_end.update()
+                                    
+                                # Sync playback icons if they drifted
+                                player_is_playing = self.player.is_playing
+                                ui_is_playing = (self.play_btn.icon == ft.Icons.PAUSE_CIRCLE_FILLED)
+                                if player_is_playing != ui_is_playing:
+                                    self._update_playback_ui(player_is_playing)
                             except:
                                 pass
                         
@@ -372,24 +398,138 @@ class DabFletApp:
         setattr(self, name, ref)
         return ref
 
+    def _create_player_track_info(self):
+        """Create the left section of player bar (track info) - saved as self.player_track_info"""
+        self.player_track_info = ft.Row([
+            self.track_art,
+            ft.Column([
+                self.track_title,
+                ft.Row([self.track_artist, self.audio_quality_info], spacing=10)
+            ], spacing=2, alignment=ft.MainAxisAlignment.CENTER)
+        ], spacing=15, width=280)
+        return self.player_track_info
+
+    def _create_player_controls(self):
+        """Create the center section of player bar (controls) - saved as self.player_center"""
+        self.seek_container = ft.Container(
+            content=ft.Row([
+                self.time_cur,
+                self.seek_slider,
+                self.time_end
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            width=550,
+            margin=ft.Margin(0, -25, 0, 0)
+        )
+        self.player_center = ft.Column([
+            ft.Row([
+                self.shuffle_btn,
+                ft.IconButton(ft.Icons.SKIP_PREVIOUS, icon_size=24, icon_color=ft.Colors.WHITE, on_click=lambda _: self._prev_track(), ref=self._assign_ref("btn_prev")),
+                self.play_btn,
+                ft.IconButton(ft.Icons.SKIP_NEXT, icon_size=24, icon_color=ft.Colors.WHITE, on_click=lambda _: self._next_track(), ref=self._assign_ref("btn_next")),
+                self.repeat_btn,
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
+            self.seek_container
+        ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2, expand=True)
+        return self.player_center
+
+    def _create_player_extras(self):
+        """Create the right section of player bar (volume/extras) - saved as self.player_extras"""
+        self.player_extras = ft.Row([
+            ft.IconButton(ft.Icons.LYRICS, icon_size=20, icon_color=ft.Colors.WHITE_30, on_click=lambda _: self._show_lyrics_view(), tooltip="Toggle Lyrics", ref=self._assign_ref("btn_lyrics")),
+            ft.IconButton(ft.Icons.QUEUE_MUSIC, icon_size=20, icon_color=ft.Colors.WHITE_30, on_click=lambda _: self._show_queue(), tooltip="Show Queue", ref=self._assign_ref("btn_queue")),
+            ft.IconButton(ft.Icons.VOLUME_UP, icon_size=20, icon_color=ft.Colors.WHITE_30, ref=self._assign_ref("btn_vol")),
+            self.vol_slider,
+        ], spacing=5, alignment=ft.MainAxisAlignment.END, width=320)
+        return self.player_extras
+
     def _setup_ui(self):
         # 1. Sidebar Widgets
+        # Hamburger button for mobile sidebar toggle (inside sidebar)
+        self.hamburger_btn = ft.IconButton(
+            ft.Icons.MENU, 
+            icon_size=28, 
+            icon_color=ft.Colors.GREEN,
+            on_click=lambda _: self._toggle_sidebar(),
+            visible=False  # Hidden on desktop
+        )
+        
+        # Initialize Player Buttons
+        self.mobile_play_btn = ft.IconButton(
+            ft.Icons.PLAY_CIRCLE_FILLED, 
+            icon_size=36, 
+            icon_color=ft.Colors.WHITE, 
+            on_click=lambda _: self._toggle_playback()
+        )
+        self.mobile_prev_btn = ft.IconButton(
+            ft.Icons.SKIP_PREVIOUS, 
+            icon_size=24, 
+            icon_color=ft.Colors.WHITE, 
+            on_click=lambda _: self._prev_track()
+        )
+        self.mobile_shuffle_btn = ft.IconButton(
+            ft.Icons.SHUFFLE, 
+            icon_size=18, 
+            icon_color=ft.Colors.WHITE_30, 
+            on_click=lambda _: self._toggle_shuffle()
+        )
+        self.mobile_repeat_btn = ft.IconButton(
+            ft.Icons.REPEAT, 
+            icon_size=18, 
+            icon_color=ft.Colors.WHITE_30, 
+            on_click=lambda _: self._toggle_loop()
+        )
+        
+        # Mini controls for collapsed mobile state
+        self.mini_play_btn = ft.IconButton(
+            ft.Icons.PAUSE_CIRCLE_FILLED,
+            icon_size=32,
+            icon_color=ft.Colors.WHITE,
+            on_click=lambda _: self._toggle_playback()
+        )
+        self.mini_next_btn = ft.IconButton(
+            ft.Icons.SKIP_NEXT,
+            icon_size=28,
+            icon_color=ft.Colors.WHITE,
+            on_click=lambda _: self._next_track()
+        )
+        self.collapse_btn = ft.IconButton(
+            ft.Icons.KEYBOARD_ARROW_DOWN,
+            icon_size=24,
+            icon_color=ft.Colors.WHITE_30,
+            on_click=lambda _: self._toggle_mobile_player(),
+            padding=0,
+            tooltip="Collapse Player"
+        )
+        self.expand_btn = ft.IconButton(
+            ft.Icons.KEYBOARD_ARROW_UP,
+            icon_size=24,
+            icon_color=ft.Colors.WHITE_30,
+            on_click=lambda _: self._toggle_mobile_player(),
+            visible=False,
+            tooltip="Expand Player"
+        )
+        self.player_expanded = True
+        
+        # Logo row with hamburger
+        self.logo_row = ft.Row([
+            ft.Icon(ft.Icons.MUSIC_NOTE, color=ft.Colors.GREEN, size=32),
+            ft.Text("BeatBoss", size=24, weight="bold")
+        ], alignment=ft.MainAxisAlignment.START)
+        
         self.sidebar_content = ft.Column([
-            ft.Row([
-                ft.Icon(ft.Icons.MUSIC_NOTE, color=ft.Colors.GREEN, size=32),
-                ft.Text("BeatBoss", size=24, weight="bold")
-            ], alignment=ft.MainAxisAlignment.START),
-            ft.Container(height=40),
+            self.hamburger_btn,  # Hamburger at top (visible only on mobile)
+            self.logo_row,
+            ft.Container(height=30),
             self._nav_item(ft.Icons.HOME, "Home", self._show_home, True),
             self._nav_item(ft.Icons.SEARCH, "Search", self._show_search),
             self._nav_item(ft.Icons.LIBRARY_MUSIC, "Library", self._show_library),
-            ft.Divider(height=40),
+            ft.Divider(height=30),
             self._nav_item(ft.Icons.ADD_BOX, "Create Library", self._open_create_lib),
             self._nav_item(ft.Icons.FAVORITE, "Liked Songs", self._show_favorites),
             self._nav_item(ft.Icons.SETTINGS, "Settings", self._show_settings),
-            ft.Container(height=20),
+            ft.Container(height=15),
             self._nav_item(ft.Icons.LOGOUT, "Sign Out", self._handle_logout, color=ft.Colors.RED_400),
-        ], spacing=5)
+        ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.START)  # Left-aligned by default
 
         self.sidebar = ft.Container(
             width=260,
@@ -403,7 +543,6 @@ class DabFletApp:
             hint_text="Search tracks, artists...",
             prefix_icon=ft.Icons.SEARCH,
             border_radius=25,
-            # bgcolor removed - let theme handle it
             border_color=ft.Colors.TRANSPARENT,
             focused_border_color=ft.Colors.GREEN,
             height=45,
@@ -413,27 +552,65 @@ class DabFletApp:
             on_focus=lambda _: setattr(self, "_search_focused", True),
             on_blur=lambda _: setattr(self, "_search_focused", False)
         )
+        
+        # Unify: Search icon button for mobile is no longer needed if bar is default
+        self.search_icon_btn = ft.IconButton(
+            ft.Icons.SEARCH,
+            icon_size=28,
+            icon_color=ft.Colors.WHITE,
+            on_click=lambda _: self.search_bar.focus(),
+            visible=False 
+        )
+        
+        # Unify: Replaced by single search_bar
+        self.mobile_search_bar = self.search_bar
+        
+        # Close search button - no longer needed
+        self.close_search_btn = ft.IconButton(
+            ft.Icons.CLOSE,
+            icon_size=20,
+            icon_color=ft.Colors.WHITE,
+            visible=False
+        )
+        
+        # Import button
+        self.import_btn = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.IMPORT_EXPORT, size=18, color=ft.Colors.BLACK),
+                ft.Text("IMPORT", weight="bold", color=ft.Colors.BLACK)
+            ]),
+            bgcolor=ft.Colors.GREEN,
+            padding=ft.Padding(left=20, top=10, right=20, bottom=10),
+            border_radius=25,
+            on_click=lambda _: self._open_import()
+        )
+        
+        # Desktop search row (full search bar + import)
+        self.search_row_desktop = ft.Row([
+            self.search_bar,
+            ft.Container(width=20),
+            self.import_btn
+        ])
+        
+        # Mobile search row (search icon + import, or expanded search bar)
+        self.search_row_mobile = ft.Row([
+            self.mobile_search_bar,
+            self.close_search_btn,
+            self.search_icon_btn,
+            self.import_btn
+        ], visible=False)
 
         self.viewport = ft.Column(expand=True, scroll=ft.ScrollMode.ADAPTIVE)
         
         self.main_container = ft.Container(
             expand=True,
-            bgcolor=self.viewport_bg,  # Dynamic theme color
+            bgcolor=self.viewport_bg,
             padding=ft.Padding(left=40, top=30, right=40, bottom=20),
             content=ft.Column([
                 ft.Row([
                     self.search_bar,
                     ft.Container(width=20),
-                    ft.Container(
-                        content=ft.Row([
-                            ft.Icon(ft.Icons.IMPORT_EXPORT, size=18, color=ft.Colors.BLACK),
-                            ft.Text("IMPORT", weight="bold", color=ft.Colors.BLACK)
-                        ]),
-                        bgcolor=ft.Colors.GREEN,
-                        padding=ft.Padding(left=20, top=10, right=20, bottom=10),
-                        border_radius=25,
-                        on_click=lambda _: self._open_import()
-                    )
+                    self.import_btn
                 ]),
                 ft.Container(height=20),
                 self.viewport
@@ -441,7 +618,13 @@ class DabFletApp:
         )
 
         # 3. Player Bar Widgets
-        self.track_art = ft.Container(width=60, height=60, bgcolor="#1A1A1A", border_radius=10)
+        self.track_art_img = ft.Container(width=60, height=60, bgcolor="#1A1A1A", border_radius=10)
+        self.track_art_tick = ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18, visible=False)
+        self.track_art = ft.Stack([
+            self.track_art_img,
+            ft.Container(content=self.track_art_tick, bottom=-2, right=-2, bgcolor=ft.Colors.with_opacity(0.8, "#020202"), border_radius=10, padding=2)
+        ], width=60, height=60)
+
         self.track_title = ft.Text("Ambient Silence", size=14, weight="bold")
         self.track_artist = ft.Text("Start your journey", size=12, color=self._get_secondary_color())
         
@@ -466,50 +649,104 @@ class DabFletApp:
         
         self.vol_slider = ft.Slider(width=100, value=80, min=0, max=100, active_color=ft.Colors.GREEN, on_change=lambda e: self.player.set_volume(e.control.value))
 
+        # Create player bar sections
+        self._create_player_track_info()
+        self._create_player_controls()
+        self._create_player_extras()
+        
+        # Desktop player bar content (horizontal)
+        self.player_bar_desktop = ft.Row([
+            self.player_track_info,
+            self.player_center,
+            self.player_extras
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        
+        # Mobile player bar content (compact 2-row layout)
+        # Row 1: Track info + controls
+        self.mobile_track_title = ft.Text("No track", size=12, weight="bold", no_wrap=True, width=120)
+        self.mobile_track_artist = ft.Text("", size=10, color=ft.Colors.WHITE_54, no_wrap=True, width=120)
+        
+        self.mobile_track_art_img = ft.Container(width=45, height=45, border_radius=5, bgcolor="#1A1A1A")
+        self.mobile_track_art_tick = ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=14, visible=False)
+        self.mobile_track_art = ft.Stack([
+            self.mobile_track_art_img,
+            ft.Container(content=self.mobile_track_art_tick, bottom=-2, right=-2, bgcolor=ft.Colors.with_opacity(0.8, "#020202"), border_radius=7, padding=1)
+        ], width=45, height=45)
+        
+        self.mobile_time_cur = ft.Text("0:00", size=9, color=ft.Colors.WHITE_30)
+        self.mobile_time_end = ft.Text("0:00", size=9, color=ft.Colors.WHITE_30)
+        self.mobile_seek = ft.Slider(
+            min=0, 
+            max=1000, 
+            expand=True, 
+            active_color=ft.Colors.GREEN, 
+            inactive_color=ft.Colors.WHITE_10, 
+            on_change=lambda e: self._on_seek(e.control.value)
+        )
+
+        # Sub-containers for visibility toggling
+        self.mobile_seek_row = ft.Row([
+            self.mobile_time_cur,
+            self.mobile_seek,
+            self.mobile_time_end,
+        ], spacing=5, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        
+        self.mobile_controls_row = ft.Row([
+            ft.Row([self.mobile_shuffle_btn, self.mobile_repeat_btn], spacing=0),
+            ft.Row([
+                self.mobile_prev_btn,
+                self.mobile_play_btn,
+                ft.IconButton(ft.Icons.SKIP_NEXT, icon_size=28, icon_color=ft.Colors.WHITE, on_click=lambda _: self._next_track()),
+            ], spacing=10),
+            ft.Row([
+                ft.IconButton(ft.Icons.LYRICS, icon_size=20, icon_color=ft.Colors.WHITE_30, on_click=lambda _: self._show_lyrics_view(), tooltip="Toggle Lyrics"),
+                ft.IconButton(ft.Icons.QUEUE_MUSIC, icon_size=20, icon_color=ft.Colors.WHITE_30, on_click=lambda _: self._show_queue(), tooltip="Show Queue"),
+            ], spacing=0),
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+        self.mobile_mini_controls = ft.Row([
+            self.mini_play_btn,
+            self.mini_next_btn,
+            self.expand_btn  # Only shows when collapsed
+        ], spacing=0, visible=False)
+
+        # Minimise label + icon row
+        self.minimise_controls = ft.Row([
+            ft.Text("Minimise", size=12, color=ft.Colors.WHITE_30),
+            self.collapse_btn
+        ], spacing=5, visible=True)
+
+        # Metadata row now handles its own toggle button for space efficiency
+        # Metadata row simplification - toggle visibility of control sets
+        self.mobile_metadata_row = ft.Row([
+            ft.Row([
+                self.mobile_track_art,
+                ft.Column([
+                    self.mobile_track_title,
+                    self.mobile_track_artist
+                ], spacing=0, alignment=ft.MainAxisAlignment.CENTER),
+            ], spacing=10, expand=True),
+            # Show either mini-controls or minimise label depending on state
+            self.mobile_mini_controls,
+            self.minimise_controls,
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+        self.player_bar_mobile = ft.Column([
+            self.mobile_seek_row,
+            self.mobile_controls_row,
+            self.mobile_metadata_row,
+        ], spacing=5, alignment=ft.MainAxisAlignment.END, visible=False)
+
         self.player_bar = ft.Container(
             height=90,
             bgcolor=ft.Colors.with_opacity(0.9, self.card_bg if hasattr(self, 'card_bg') else "#1A1A1A"),
             blur=ft.Blur(20, 20),
             border=ft.Border(top=ft.BorderSide(0.5, ft.Colors.WHITE_10)),
             padding=ft.Padding(30, 0, 30, 0),
-            content=ft.Row([
-                # Left: Track Info
-                ft.Row([
-                    self.track_art,
-                    ft.Column([
-                        self.track_title,
-                        ft.Row([self.track_artist, self.audio_quality_info], spacing=10)
-                    ], spacing=2, alignment=ft.MainAxisAlignment.CENTER)
-                ], spacing=15, width=280),
-                
-                # Center: Controls & Slider
-                ft.Column([
-                    ft.Row([
-                        self.shuffle_btn,
-                        ft.IconButton(ft.Icons.SKIP_PREVIOUS, icon_size=24, icon_color=ft.Colors.WHITE, on_click=lambda _: self._prev_track(), ref=self._assign_ref("btn_prev")),
-                        self.play_btn,
-                        ft.IconButton(ft.Icons.SKIP_NEXT, icon_size=24, icon_color=ft.Colors.WHITE, on_click=lambda _: self._next_track(), ref=self._assign_ref("btn_next")),
-                        self.repeat_btn,
-                    ], alignment=ft.MainAxisAlignment.CENTER, spacing=10),
-                    ft.Container(
-                        content=ft.Row([
-                            self.time_cur,
-                            self.seek_slider,
-                            self.time_end
-                        ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        width=550,
-                        margin=ft.Margin(0, -25, 0, 0) # Pull seek bar up more
-                    )
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2, expand=True),
-                
-                # Right: Volume & Extras
-                ft.Row([
-                    ft.IconButton(ft.Icons.LYRICS, icon_size=20, icon_color=ft.Colors.WHITE_30, on_click=lambda _: self._show_lyrics_view(), tooltip="Toggle Lyrics", ref=self._assign_ref("btn_lyrics")),
-                    ft.IconButton(ft.Icons.QUEUE_MUSIC, icon_size=20, icon_color=ft.Colors.WHITE_30, on_click=lambda _: self._show_queue(), tooltip="Show Queue", ref=self._assign_ref("btn_queue")),
-                    ft.IconButton(ft.Icons.VOLUME_UP, icon_size=20, icon_color=ft.Colors.WHITE_30, ref=self._assign_ref("btn_vol")),
-                    self.vol_slider,
-                ], spacing=5, alignment=ft.MainAxisAlignment.END, width=320)
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            content=ft.Stack([
+                self.player_bar_desktop,
+                self.player_bar_mobile
+            ])
         )
 
         self.page.add(
@@ -549,8 +786,8 @@ class DabFletApp:
             content=ft.Row([
                 ft.Icon(icon, color=color or (ft.Colors.GREEN if selected else None), size=20),
                 ft.Text(text, color=color or (ft.Colors.GREEN if selected else None), weight="bold", size=14)
-            ], alignment=ft.MainAxisAlignment.START),
-            padding=ft.Padding(left=20, top=12, right=0, bottom=12),
+            ], alignment=ft.MainAxisAlignment.START),  # Left alignment for all sidebar content
+            padding=ft.Padding(left=18, top=12, right=15, bottom=12),  # Refined left padding
             border_radius=10,
             bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.GREEN) if selected else ft.Colors.TRANSPARENT,
             on_click=_on_click,
@@ -623,6 +860,212 @@ class DabFletApp:
             except:
                 pass  # Silently fail if control not attached
 
+    def _on_window_resize(self, e):
+        """Handle window resize for responsive layout"""
+        try:
+            width = self.page.width or 1350
+            is_mobile = width < 600
+            
+            # Update if mobile state changes OR if desktop width crosses expansion threshold (1000)
+            crossing_threshold = (width >= 1000 and getattr(self, "_last_width", 1000) < 1000) or \
+                                 (width < 1000 and getattr(self, "_last_width", 1000) >= 1000)
+            
+            if is_mobile != self.is_mobile_view or crossing_threshold:
+                self.is_mobile_view = is_mobile
+                self._update_responsive_layout()
+            
+            self._last_width = width
+        except Exception as ex:
+            print(f"Resize handler error: {ex}")
+
+    def _update_responsive_layout(self):
+        """Update layout based on screen width"""
+        try:
+            if self.is_mobile_view:
+                # Mobile layout: narrow sidebar (icons only)
+                self.sidebar.width = 70
+                self.sidebar.padding = ft.Padding(10, 15, 10, 15)
+                
+                # Hide text labels in sidebar
+                for item in self.sidebar_content.controls:
+                    if isinstance(item, ft.Container) and hasattr(item, "data") and item.data == "nav":
+                        if len(item.content.controls) > 1:
+                            item.content.controls[1].visible = False
+                
+                # Hide logo text, show hamburger
+                if hasattr(self, 'logo_row') and len(self.logo_row.controls) > 1:
+                    self.logo_row.controls[1].visible = False
+                if hasattr(self, 'hamburger_btn'):
+                    self.hamburger_btn.visible = True
+                
+                # Left-align sidebar icons when collapsed
+                self.sidebar_content.horizontal_alignment = ft.CrossAxisAlignment.START
+                self.sidebar.visible = True
+                
+                # Reduce main container padding
+                self.main_container.padding = ft.Padding(left=15, top=15, right=15, bottom=10)
+                
+                # Mobile player bar (max elevation and click safety)
+                self.player_bar.height = 175 if self.player_expanded else 30
+                self.player_bar.padding = ft.Padding(15, 5, 15, 30) if self.player_expanded else ft.Padding(15, 5, 15, 5)
+                
+                # Tighten column spacing
+                if hasattr(self, 'player_bar_mobile'):
+                    self.player_bar_mobile.spacing = 5
+                
+                # Toggle player bar layouts
+                if hasattr(self, 'player_bar_desktop'):
+                    self.player_bar_desktop.visible = False
+                if hasattr(self, 'player_bar_mobile'):
+                    self.player_bar_mobile.visible = True
+                
+            else:
+                # Desktop layout: full sidebar
+                self.sidebar.width = 260
+                self.sidebar.padding = ft.Padding(20, 20, 20, 20)
+                self.sidebar.visible = True
+                
+                # Show search bar and search button as default
+                if hasattr(self, 'search_bar'):
+                    self.search_bar.visible = True
+                    self.search_bar.update()
+
+                # Left-align sidebar items when expanded
+                self.sidebar_content.horizontal_alignment = ft.CrossAxisAlignment.START
+                
+                # Show text labels in sidebar
+                for item in self.sidebar_content.controls:
+                    if isinstance(item, ft.Container) and hasattr(item, "data") and item.data == "nav":
+                        if len(item.content.controls) > 1:
+                            item.content.controls[1].visible = True
+                
+                # Show logo text, hide hamburger
+                if hasattr(self, 'logo_row') and len(self.logo_row.controls) > 1:
+                    self.logo_row.controls[1].visible = True
+                if hasattr(self, 'hamburger_btn'):
+                    self.hamburger_btn.visible = False
+                
+                # Restore main container padding
+                self.main_container.padding = ft.Padding(left=40, top=30, right=40, bottom=20)
+                
+                # Desktop player bar
+                self.player_bar.height = 90
+                self.player_bar.padding = ft.Padding(30, 0, 30, 0)
+                
+                # Toggle player bar layouts
+                if hasattr(self, 'player_bar_desktop'):
+                    self.player_bar_desktop.visible = True
+                if hasattr(self, 'player_bar_mobile'):
+                    self.player_bar_mobile.visible = False
+                
+                # Show all desktop controls
+                if hasattr(self, 'player_extras'):
+                    self.player_extras.visible = True
+                if hasattr(self, 'seek_container'):
+                    self.seek_container.visible = True
+                    self.seek_container.width = 550
+                if hasattr(self, 'shuffle_btn'):
+                    self.shuffle_btn.visible = True
+                if hasattr(self, 'repeat_btn'):
+                    self.repeat_btn.visible = True
+                if hasattr(self, 'player_track_info'):
+                    self.player_track_info.width = 280
+            
+            # Enforce Consistent Global Sidebar Rules
+            self.sidebar.visible = True # Always visible
+            
+            if self.is_mobile_view or self.page.width < 1000:
+                # Slim / Narrow View
+                self.sidebar.width = 70
+                self.sidebar.padding = ft.padding.all(10)
+                self.sidebar_content.horizontal_alignment = ft.CrossAxisAlignment.CENTER # Centered icons for narrow
+                
+                for item in self.sidebar_content.controls:
+                    if isinstance(item, ft.Container) and hasattr(item, "data") and item.data == "nav":
+                         # Hide text labels
+                         if len(item.content.controls) > 1:
+                              item.content.controls[1].visible = False
+                         # Center the row content itself
+                         item.content.alignment = ft.MainAxisAlignment.CENTER
+                         item.padding = ft.padding.symmetric(horizontal=0, vertical=12)
+                
+                # Align Logo and Hamburger in center
+                if hasattr(self, 'logo_row'):
+                     self.logo_row.alignment = ft.MainAxisAlignment.CENTER
+                     if len(self.logo_row.controls) > 1:
+                          self.logo_row.controls[1].visible = False
+            else:
+                # Expanded / Wide Desktop View
+                self.sidebar.width = 260
+                self.sidebar.padding = ft.Padding(20, 20, 20, 20)
+                self.sidebar_content.horizontal_alignment = ft.CrossAxisAlignment.START # Left aligned content
+                
+                for item in self.sidebar_content.controls:
+                    if isinstance(item, ft.Container) and hasattr(item, "data") and item.data == "nav":
+                         # Show text labels
+                         if len(item.content.controls) > 1:
+                              item.content.controls[1].visible = True
+                         # Left-align the row
+                         item.content.alignment = ft.MainAxisAlignment.START
+                         item.padding = ft.padding.only(left=18, top=12, right=15, bottom=12)
+
+                # Align Logo and Hamburger left
+                if hasattr(self, 'logo_row'):
+                     self.logo_row.alignment = ft.MainAxisAlignment.START
+                     if len(self.logo_row.controls) > 1:
+                          self.logo_row.controls[1].visible = True
+            
+            self.main_container.padding = 10 if self.is_mobile_view else 30
+            self.viewport.spacing = 15 if self.is_mobile_view else 25
+            
+            self.page.update()
+        except Exception as ex:
+            print(f"Responsive layout error: {ex}")
+
+    def _toggle_sidebar(self):
+        """Toggle sidebar expansion on mobile (hamburger menu)"""
+        try:
+            if self.sidebar.width == 70:
+                # Expand sidebar
+                self.sidebar.width = 260
+                self.sidebar.padding = ft.Padding(20, 20, 20, 20)
+                
+                # Show text labels
+                for item in self.sidebar_content.controls:
+                    if isinstance(item, ft.Container) and hasattr(item, "data") and item.data == "nav":
+                        if len(item.content.controls) > 1:
+                            item.content.controls[1].visible = True
+                
+                # Show logo text
+                if hasattr(self, 'logo_row') and len(self.logo_row.controls) > 1:
+                    self.logo_row.controls[1].visible = True
+            else:
+                # Collapse sidebar
+                self.sidebar.width = 70
+                self.sidebar.padding = ft.Padding(10, 20, 10, 20)
+                
+                # Hide text labels
+                for item in self.sidebar_content.controls:
+                    if isinstance(item, ft.Container) and hasattr(item, "data") and item.data == "nav":
+                        if len(item.content.controls) > 1:
+                            item.content.controls[1].visible = False
+                
+                # Hide logo text
+                if hasattr(self, 'logo_row') and len(self.logo_row.controls) > 1:
+                    self.logo_row.controls[1].visible = False
+            
+            self.page.update()
+        except Exception as ex:
+            print(f"Toggle sidebar error: {ex}")
+
+    def _expand_search(self):
+        """No longer used with unified search bar"""
+        pass
+
+    def _collapse_search(self):
+        """No longer used with unified search bar"""
+        pass
+
     def _show_search(self):
         self.current_view = "search"
         self.viewport.controls.clear()
@@ -676,13 +1119,17 @@ class DabFletApp:
 
     def _draw_login(self, is_signup=False):
         self.viewport.controls.clear()
+        
+        # Responsive width calculation
+        card_width = min(400, self.page.width - 40) if self.page.width > 0 else 380
+        
         self.login_email = ft.TextField(label="Email", border_radius=15, border_color=ft.Colors.OUTLINE)
         self.login_pass = ft.TextField(label="Password", password=True, can_reveal_password=True, border_radius=15, border_color=ft.Colors.OUTLINE)
         self.login_name = ft.TextField(label="Username", border_radius=15, border_color=ft.Colors.OUTLINE) if is_signup else None
         
         controls = [
             ft.Icon(ft.Icons.MUSIC_NOTE, size=48, color=ft.Colors.GREEN),
-            ft.Text("Create Account" if is_signup else "Welcome to BeatBoss", size=24, weight="bold"),
+            ft.Text("Create Account" if is_signup else "Welcome to BeatBoss", size=24, weight="bold", text_align=ft.TextAlign.CENTER),
             ft.Text("Powered by DAB", size=12) if not is_signup else ft.Container(height=0),
             ft.Container(height=20),
         ]
@@ -696,7 +1143,7 @@ class DabFletApp:
             ft.Container(height=20),
             ft.FilledButton(
                 "SIGN UP" if is_signup else "SIGN IN", 
-                width=340, height=50, 
+                width=card_width - 40, height=50, 
                 style=ft.ButtonStyle(bgcolor=ft.Colors.GREEN, color=ft.Colors.BLACK, shape=ft.RoundedRectangleBorder(radius=15)), 
                 on_click=lambda _: self._handle_signup() if is_signup else self._handle_login()
             ),
@@ -705,12 +1152,17 @@ class DabFletApp:
                 on_click=lambda _: self._draw_login(not is_signup)
             )
         ])
-
-        login_box = ft.Container(
-            content=ft.Column(controls, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            bgcolor=self.card_bg if hasattr(self, 'card_bg') else "#1A1A1A", padding=40, border_radius=30, width=400, margin=ft.Margin(left=0, top=50, right=0, bottom=0)
+        
+        login_card = ft.Container(
+            content=ft.Column(controls, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, scroll=ft.ScrollMode.ADAPTIVE),
+            padding=30,
+            bgcolor="#111111",
+            border_radius=20,
+            width=card_width,
+            border=ft.border.all(1, ft.Colors.WHITE_10)
         )
-        self.viewport.controls.append(ft.Row([login_box], alignment=ft.MainAxisAlignment.CENTER))
+        
+        self.viewport.controls.append(ft.Row([login_card], alignment=ft.MainAxisAlignment.CENTER))
         self.page.update()
 
     def _show_success(self, text):
@@ -752,9 +1204,12 @@ class DabFletApp:
             
             # Preload libraries in background
             def _preload_libraries():
-                import time
-                self.cached_libraries = self.api.get_libraries()
-                self.library_last_updated = time.time()
+                try:
+                    import time
+                    self.cached_libraries = self.api.get_libraries()
+                    self.library_last_updated = time.time()
+                except Exception as e:
+                    print(f"[Preload] Library preload failed (network issue): {e}")
             threading.Thread(target=_preload_libraries, daemon=True).start()
             self._show_home()
         else:
@@ -773,6 +1228,9 @@ class DabFletApp:
     def _handle_search(self):
         q = self.search_bar.value
         if not q: return
+        
+        # Ensure we are in search view
+        self.current_view = "search"
         
         # PERFORMANCE: Guard against rapid successive searches
         now = time.time()
@@ -807,38 +1265,52 @@ class DabFletApp:
         
         def _req():
             try:
+                print(f"[Search] Requesting: {q}")
                 rs = self.api.search(q, search_type="all") # "all" returns albums too
+                print(f"[Search] API returned 200. Result keys: {list(rs.keys()) if rs else 'None'}")
                 
                 def _update_res():
-                    if self.current_view != "search": return
+                    if self.current_view != "search": 
+                        print("[Search] View changed, discarding results.")
+                        return
                     
-                    # Clear loading indicator (and everything else) to rebuild cleanly
-                    self.viewport.controls.clear()
-                    self.viewport.controls.append(ft.Text(f"Results for '{q}'", size=24, weight="bold"))
-                    self.viewport.controls.append(ft.Container(height=20))
-                    
-                    if self.current_view != "search": return
-                    if rs:
-                        # Display Albums Section
-                        if rs.get("albums"):
-                            self.viewport.controls.append(ft.Text("Albums", size=20, weight="bold"))
-                            self._display_albums(rs["albums"])
-                            self.viewport.controls.append(ft.Container(height=20))
-                    
-                        # Display Tracks Section
-                        if rs.get("tracks"):
-                            self.viewport.controls.append(ft.Text("Tracks", size=20, weight="bold"))
-                            self._display_tracks(rs["tracks"])
+                    try:
+                        # Clear loading indicator (and everything else) to rebuild cleanly
+                        self.viewport.controls.clear()
+                        self.viewport.controls.append(ft.Text(f"Results for '{q}'", size=24, weight="bold"))
+                        self.viewport.controls.append(ft.Container(height=20))
                         
-                        if not rs.get("albums") and not rs.get("tracks"):
-                             self.viewport.controls.append(ft.Text("No results found."))
-                    else:
-                        self.viewport.controls.append(ft.Text("No results found."))
-                    self.page.update()
+                        if rs:
+                            # Display Albums Section
+                            if rs.get("albums"):
+                                self.viewport.controls.append(ft.Text("Albums", size=20, weight="bold"))
+                                self._display_albums(rs["albums"])
+                                self.viewport.controls.append(ft.Container(height=20))
+                        
+                            # Display Tracks Section
+                            if rs.get("tracks"):
+                                print(f"[Search] Found {len(rs['tracks'])} tracks")
+                                self.viewport.controls.append(ft.Text("Tracks", size=20, weight="bold"))
+                                self._display_tracks(rs["tracks"])
+                            
+                            if not rs.get("albums") and not rs.get("tracks"):
+                                 self.viewport.controls.append(ft.Text("No results found."))
+                        else:
+                            self.viewport.controls.append(ft.Text("No results found."))
+                        self.page.update()
+                    except Exception as ex:
+                        print(f"UI Update error in search: {ex}")
 
-                _update_res()
+                self.page.run_thread(_update_res)
             except Exception as e:
                 print(f"Search request error: {e}")
+                # Clear loading indicator even on error
+                def _error_clear():
+                    if self.current_view == "search":
+                        self.viewport.controls.clear()
+                        self.viewport.controls.append(ft.Text(f"Search error: {str(e)}", color=ft.Colors.RED_400))
+                        self.page.update()
+                self.page.run_thread(_error_clear)
         
         # PERFORMANCE: Use thread pool instead of creating new thread
         self._add_future(self.thread_pool.submit(_req))
@@ -935,8 +1407,17 @@ class DabFletApp:
         self.last_search_results = tracks
         grid = ft.Column(spacing=15) # Increased spacing
         for i, t in enumerate(tracks):
-            # Larger scale: 60x60
-            track_img = ft.Container(width=55, height=55, bgcolor="#1A1A1A", border_radius=8)
+            # Check if track is downloaded
+            is_downloaded = self.download_manager.is_downloaded(t.get("id"))
+            
+            # Larger scale: 55x55
+            track_img_core = ft.Container(width=55, height=55, bgcolor="#1A1A1A", border_radius=8)
+            track_tick = ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=16, visible=is_downloaded)
+            
+            track_img = ft.Stack([
+                track_img_core,
+                ft.Container(content=track_tick, bottom=-2, right=-2, bgcolor=ft.Colors.with_opacity(0.8, "#020202"), border_radius=8, padding=1)
+            ], width=55, height=55)
             
             # Hi-Res Badge (Pill style outside image)
             is_hires = t.get("audioQuality", {}).get("isHiRes", False)
@@ -953,11 +1434,20 @@ class DabFletApp:
             like_text = "Unlike" if is_fav_view else "Like"
             like_click = self._unlike_track if is_fav_view else self._like_track
             
+            # Check mobile view
+            is_mobile = getattr(self, 'is_mobile_view', False)
+            if hasattr(self, 'page') and self.page:
+                 if self.page.width < 600: is_mobile = True
+
             items=[
                 ft.PopupMenuItem(content=ft.Text("Add to Library"), on_click=lambda _, trk=t: self._add_to_lib_picker(trk)),
                 ft.PopupMenuItem(content=ft.Text("Add to Queue"), on_click=lambda _, trk=t: self._add_to_queue(trk)),
                 ft.PopupMenuItem(content=ft.Text(like_text), on_click=lambda _, trk=t: like_click(trk)),
             ]
+            
+            if is_mobile and not is_downloaded:
+                 # Add Download to menu in mobile only if not already downloaded
+                 items.append(ft.PopupMenuItem(content=ft.Text("Download"), on_click=lambda _, trk=t: self._trigger_download(trk)))
             
             # If we are in a library view, add "Remove from Library"
             if hasattr(self, 'current_view_lib_id') and self.current_view_lib_id:
@@ -971,6 +1461,13 @@ class DabFletApp:
                 items=items
             )
 
+            # Mobile-aware buttons
+            dl_btn = self._create_download_button(t)
+            dl_btn.visible = not is_mobile
+            
+            queue_btn = ft.IconButton(ft.Icons.ADD, icon_color=ft.Colors.GREEN, on_click=lambda _, trk=t: self._add_to_queue(trk), tooltip="Add to Queue")
+            queue_btn.visible = not is_mobile
+
             row = ft.Container(
                 content=ft.Row([
                     track_img,
@@ -981,10 +1478,10 @@ class DabFletApp:
                         ], spacing=10),
                         ft.Text(t.get("artist"), size=14, color=self._get_secondary_color(), max_lines=1)
                     ], expand=True, spacing=4),
-                    # Download button or checkmark
-                    self._create_download_button(t),
+                    # Buttons
+                    dl_btn,
                     ft.Row([
-                        ft.IconButton(ft.Icons.ADD, icon_color=ft.Colors.GREEN, on_click=lambda _, trk=t: self._add_to_queue(trk), tooltip="Add to Queue"),
+                        queue_btn,
                         ft.IconButton(ft.Icons.PLAY_ARROW_ROUNDED, icon_size=30, icon_color=ft.Colors.GREEN, on_click=lambda _, idx=i: self._play_track_from_list(tracks, idx)),
                         menu
                     ], spacing=0)
@@ -993,7 +1490,7 @@ class DabFletApp:
                 on_hover=lambda e: self._on_track_hover(e)  # OPTIMIZED: Use throttled method
             )
             grid.controls.append(row)
-            if t.get("albumCover"): self._load_art(t["albumCover"], track_img)
+            if t.get("albumCover"): self._load_art(t["albumCover"], track_img_core)
         self.viewport.controls.append(grid)
         self.page.update()
     
@@ -1146,30 +1643,41 @@ class DabFletApp:
                         else:
                             self.audio_quality_info.visible = False
                             
-                        self.play_btn.icon = ft.Icons.PAUSE_CIRCLE_FILLED
-                        self.lyrics_data = []
-                        self.current_lyric_idx = -1
-                        if track.get("albumCover"): self._load_art(track["albumCover"], self.track_art)
+                        # Update playback icons to playing state
+                        self._update_playback_ui(True)
                         
-                        # Update Windows media controls
-                        # Prepare metadata
-                        album_val = track.get("album")
-                        album_title = album_val.get("title") if isinstance(album_val, dict) else album_val
+                        # Sync Mobile Player Info
+                        self.mobile_track_title.value = track.get("title")
+                        self.mobile_track_artist.value = track.get("artist")
                         
-                        # Update Windows media controls
-                        if hasattr(self, 'windows_media'):
-                            self.windows_media.update_metadata(
-                                title=track.get("title"),
-                                artist=track.get("artist"),
-                                album=album_title,
-                                thumbnail_url=track.get("image") or track.get("albumCover")
-                            )
-                        self.windows_media.set_playback_status(True)
+                        # Set download indicator
+                        is_local = self.download_manager.is_downloaded(track.get("id"))
+                        self.track_art_tick.visible = is_local
+                        self.mobile_track_art_tick.visible = is_local
                         
-                        # Fetch lyrics - use thread pool
-                        self.fetching_lyrics = True
-                        self._add_future(self.thread_pool.submit(self._fetch_lyrics, track))
+                        # Load art for both
+                        if track.get("image"):
+                            self._load_art(track.get("image"), self.track_art_img)
+                            self._load_art(track.get("image"), self.mobile_track_art_img)
                         
+                        # Update all controls
+                        self.track_title.update()
+                        self.track_artist.update()
+                        self.audio_quality_info.update()
+                        self.mobile_track_title.update()
+                        self.mobile_track_artist.update()
+                        self.mobile_track_art.update() # stack update
+                        self.track_art.update() # stack update
+                    except Exception as e:
+                        print(f"UI update error: {e}")
+                        
+                    # Fetch lyrics - use thread pool (MOVED OUTSIDE EXCEPT)
+                    self.lyrics_data = []
+                    self.current_lyric_idx = -1
+                    self.fetching_lyrics = True
+                    self._add_future(self.thread_pool.submit(self._fetch_lyrics, track))
+                    
+                    try:
                         self.page.update()
                     except Exception as e:
                         print(f"UI Sync error: {e}")
@@ -1305,24 +1813,70 @@ class DabFletApp:
         )
         self.page.update()
 
-    def _toggle_playback(self):
-        # Immediate UI feedback - update icon first
-        try:
-            current_icon = self.play_btn.icon
-            new_icon = ft.Icons.PLAY_CIRCLE_FILLED if current_icon == ft.Icons.PAUSE_CIRCLE_FILLED else ft.Icons.PAUSE_CIRCLE_FILLED
-            self.play_btn.icon = new_icon
+    def _update_playback_ui(self, is_playing):
+        """Standardized method to update all play/pause icons and SMTC status"""
+        icon = ft.Icons.PAUSE_CIRCLE_FILLED if is_playing else ft.Icons.PLAY_CIRCLE_FILLED
+        
+        # Update Desktop btn
+        if hasattr(self, 'play_btn'):
+            self.play_btn.icon = icon
             if self.play_btn.page:
-                try:
-                    self.play_btn.update()
-                except:
-                    pass
-            
-            # Update Windows media status
-            is_playing = (new_icon == ft.Icons.PAUSE_CIRCLE_FILLED)
-            if hasattr(self, 'windows_media'):
-                try:
-                     self.windows_media.set_playback_status(is_playing)
+                try: self.play_btn.update()
                 except: pass
+                
+        # Update Mobile btn
+        if hasattr(self, 'mobile_play_btn'):
+            self.mobile_play_btn.icon = icon
+            if self.mobile_play_btn.page:
+                try: self.mobile_play_btn.update()
+                except: pass
+
+        # Update Mini Mobile btn
+        if hasattr(self, 'mini_play_btn'):
+            self.mini_play_btn.icon = ft.Icons.PAUSE if is_playing else ft.Icons.PLAY_ARROW
+            if self.mini_play_btn.page:
+                try: self.mini_play_btn.update()
+                except: pass
+                
+        # Update Windows SMTC
+        if hasattr(self, 'windows_media'):
+            try: self.windows_media.set_playback_status(is_playing)
+            except: pass
+
+    def _toggle_mobile_player(self):
+        """Toggle between expanded and collapsed mobile player states"""
+        self.player_expanded = not self.player_expanded
+        
+        if self.player_expanded:
+            self.player_bar.height = 175
+            self.player_bar.padding = ft.Padding(15, 5, 15, 30)
+            self.mobile_seek_row.visible = True
+            self.mobile_controls_row.visible = True
+            self.minimise_controls.visible = True
+            self.mobile_mini_controls.visible = False
+            self.expand_btn.visible = False
+        else:
+            self.player_bar.height = 60
+            self.player_bar.padding = ft.Padding(15, 5, 15, 5)
+            self.mobile_seek_row.visible = False
+            self.mobile_controls_row.visible = False
+            self.minimise_controls.visible = False
+            self.mobile_mini_controls.visible = True
+            self.expand_btn.visible = True
+            
+        try:
+            self.player_bar.update()
+        except:
+            self.page.update()
+
+    def _toggle_playback(self):
+        # Immediate UI feedback
+        try:
+            is_currently_playing = (self.play_btn.icon == ft.Icons.PAUSE_CIRCLE_FILLED)
+            new_playing_state = not is_currently_playing
+            
+            # Update icons immediately
+            self._update_playback_ui(new_playing_state)
             
             # Then toggle player in background
             def _toggle_task():
@@ -1357,37 +1911,55 @@ class DabFletApp:
         if self.shuffle_enabled:
             self.original_queue = list(self.queue)
             random.shuffle(self.queue)
-            self.shuffle_btn.icon_color = ft.Colors.GREEN
+            color = ft.Colors.GREEN
         else:
-            if self.original_queue:
+            if hasattr(self, 'original_queue') and self.original_queue:
                 self.queue = list(self.original_queue)
-            # Use theme-aware color for inactive state
-            self.shuffle_btn.icon_color = self._get_secondary_color()
-        try:
-            self.shuffle_btn.update()
-        except:
-            self.page.update()
-    
-    def _toggle_loop(self):
-        """Cycle through loop modes: off -> loop_all -> loop_one -> off"""
-        if self.loop_mode == "off":
-            self.loop_mode = "loop_all"
-            self.repeat_btn.icon = ft.Icons.REPEAT
-            self.repeat_btn.icon_color = ft.Colors.GREEN
-        elif self.loop_mode == "loop_all":
-            self.loop_mode = "loop_one"
-            self.repeat_btn.icon = ft.Icons.REPEAT_ONE
-            self.repeat_btn.icon_color = ft.Colors.GREEN
-        else:  # loop_one
-            self.loop_mode = "off"
-            self.repeat_btn.icon = ft.Icons.REPEAT
-            # Use theme-aware color for inactive state
-            self.repeat_btn.icon_color = self._get_secondary_color()
+            color = ft.Colors.WHITE_30 # Default inactive color
         
-        try:
-            self.repeat_btn.update()
-        except:
-            self.page.update()
+        # Update Desktop
+        self.shuffle_btn.icon_color = color
+        try: self.shuffle_btn.update()
+        except: pass
+        
+        # Update Mobile
+        if hasattr(self, 'mobile_shuffle_btn'):
+            self.mobile_shuffle_btn.icon_color = color
+            try: self.mobile_shuffle_btn.update()
+            except: pass
+            
+        self._show_success(f"Shuffle {'Enabled' if self.shuffle_enabled else 'Disabled'}")
+
+    def _toggle_loop(self):
+        # Cycle through loop modes: off -> loop_all -> loop_one -> off
+        if self.loop_mode == "off":
+            self.loop_mode = "all"
+            icon = ft.Icons.REPEAT
+            color = ft.Colors.GREEN
+        elif self.loop_mode == "all":
+            self.loop_mode = "one"
+            icon = ft.Icons.REPEAT_ONE
+            color = ft.Colors.GREEN
+        else:
+            self.loop_mode = "off"
+            icon = ft.Icons.REPEAT
+            color = ft.Colors.WHITE_30
+            
+        # Update Desktop
+        self.repeat_btn.icon = icon
+        self.repeat_btn.icon_color = color
+        try: self.repeat_btn.update()
+        except: pass
+        
+        # Update Mobile
+        if hasattr(self, 'mobile_repeat_btn'):
+            self.mobile_repeat_btn.icon = icon
+            self.mobile_repeat_btn.icon_color = color
+            try: self.mobile_repeat_btn.update()
+            except: pass
+            
+        mode_text = "Loop All" if self.loop_mode == "all" else "Loop One" if self.loop_mode == "one" else "Loop Off"
+        self._show_success(f"Mode: {mode_text}")
 
     def _next_track(self):
         """Enhanced next track with shuffle and loop support"""
@@ -1948,6 +2520,45 @@ class DabFletApp:
         self.rem_dlg.open = True
         self.page.update()
 
+    def _trigger_download(self, track):
+        """Standalone method to trigger a track download"""
+        tid = track.get("id")
+        stream_url = self.api.get_stream_url(tid)
+        if stream_url:
+            # Progress callback
+            def _on_progress(track_id, progress):
+                self.download_manager.active_downloads[track_id] = progress
+            
+            # Completion callback
+            def _on_complete(track_id, success, msg):
+                self._on_download_complete(track_id, success, msg)
+                # Trigger final refresh to show checkmark
+                def _final_update():
+                    import time
+                    time.sleep(1)  # Wait for download manager to update
+                    if self.current_view == "search" and self.last_search_results:
+                        self.viewport.controls.clear()
+                        self.viewport.controls.append(ft.Text("Search Results", size=24, weight="bold"))
+                        self._display_tracks(self.last_search_results)
+                        self.page.update()
+                    elif self.current_view == "library" and self.current_lib_tracks:
+                        if len(self.viewport.controls) > 1:
+                            self.viewport.controls = self.viewport.controls[:1]
+                        self._display_tracks(self.current_lib_tracks)
+                        self.page.update()
+                    elif self.current_view == "queue":
+                        self._show_queue(force=True)
+                    elif self.current_view == "home":
+                        self._show_home()
+                threading.Thread(target=_final_update, daemon=True).start()
+            
+            self.download_manager.download_track(
+                str(tid), stream_url, track.get("title"), track.get("artist"),
+                progress_callback=_on_progress,
+                completion_callback=_on_complete
+            )
+            self._show_banner(f"Downloading: {track.get('title')}", ft.Colors.BLUE_400)
+
     def _create_download_button(self, track):
         """Create download button, progress indicator, or checkmark for a track"""
         track_id = str(track.get("id"))
@@ -1987,50 +2598,12 @@ class DabFletApp:
             )
         else:
             # Show download button
-            def _download(e):
-                tid = track.get("id")
-                stream_url = self.api.get_stream_url(tid)
-                if stream_url:
-                    # Progress callback
-                    def _on_progress(track_id, progress):
-                        self.download_manager.active_downloads[track_id] = progress
-                    
-                    # Completion callback
-                    def _on_complete(track_id, success, msg):
-                        self._on_download_complete(track_id, success, msg)
-                        # Trigger final refresh to show checkmark
-                        def _final_update():
-                            import time
-                            time.sleep(1)  # Wait for download manager to update
-                            if self.current_view == "search" and self.last_search_results:
-                                self.viewport.controls.clear()
-                                self.viewport.controls.append(ft.Text("Search Results", size=24, weight="bold"))
-                                self._display_tracks(self.last_search_results)
-                                self.page.update()
-                            elif self.current_view == "library" and self.current_lib_tracks:
-                                if len(self.viewport.controls) > 1:
-                                    self.viewport.controls = self.viewport.controls[:1]
-                                self._display_tracks(self.current_lib_tracks)
-                                self.page.update()
-                            elif self.current_view == "queue":
-                                self._show_queue(force=True)
-                            elif self.current_view == "home":
-                                self._show_home()
-                        threading.Thread(target=_final_update, daemon=True).start()
-                    
-                    self.download_manager.download_track(
-                        str(tid), stream_url, track.get("title"), track.get("artist"),
-                        progress_callback=_on_progress,
-                        completion_callback=_on_complete
-                    )
-                    self._show_banner(f"Downloading: {track.get('title')}", ft.Colors.BLUE_400)
-            
             return ft.IconButton(
                 ft.Icons.DOWNLOAD,
                 icon_color=ft.Colors.GREEN,  # Always green for visibility
                 tooltip="Download",
                 icon_size=20,
-                on_click=_download
+                on_click=lambda _: self._trigger_download(track)
             )
     
     
@@ -2321,6 +2894,11 @@ class DabFletApp:
                     # Update player bar theme
                     self._update_player_bar_theme()
                     self._update_all_player_controls_theme()
+                    
+                    # Update playback UI state
+                    self._update_playback_ui(True)
+                    
+                    self.page.update()
                 
                 theme_switch = ft.Switch(
                     label="Light Mode",
@@ -2335,12 +2913,11 @@ class DabFletApp:
                     self.page.snack_bar.open = True
                     self._show_settings()
                 
-                clear_btn = ft.ElevatedButton(
+                clear_btn = ft.FilledButton(
                     "Clear Downloaded Tracks",
                     icon=ft.Icons.DELETE_SWEEP,
                     on_click=_clear_cache,
-                    bgcolor=ft.Colors.RED_700,
-                    color=ft.Colors.WHITE
+                    style=ft.ButtonStyle(bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, shape=ft.RoundedRectangleBorder(radius=10))
                 )
                 
                 # Settings container
@@ -2363,11 +2940,12 @@ class DabFletApp:
                 ])
                 
                 settings_container = ft.Container(
-                    content=ft.Column(settings_items),
+                    content=ft.Column(settings_items, scroll=ft.ScrollMode.ADAPTIVE),
                     padding=20,
                     bgcolor=self.card_bg if hasattr(self, 'card_bg') else "#1A1A1A",  # Dynamic theme color
                     border_radius=15,
-                    width=600
+                    expand=True,
+                    width=600 # Use fixed width for settings card
                 )
                 
                 self.viewport.controls.append(ft.Row([settings_container], alignment=ft.MainAxisAlignment.START))

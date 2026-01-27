@@ -9,7 +9,7 @@ if exist dist rd /s /q dist
 
 echo.
 echo [2/3] Building for Windows...
-flet build windows --main main_flet.py --product "BeatBoss" --assets assets
+flet build windows
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
