@@ -27,3 +27,6 @@ org = "com.thevolecitor"
 product = "BeatBoss"
 company = "TheVolecitor"
 copyright = "Copyright (C) 2026 by TheVolecitor"
+
+[tool.flet.flutter.pubspec.dependency_overrides]
+file_picker = "8.1.4"

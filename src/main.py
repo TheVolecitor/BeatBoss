@@ -153,6 +153,8 @@ class DabFletApp:
         
         # Keyboard handling (Space to toggle)
         self.page.on_keyboard_event = self._on_keyboard
+        # Mobile Back Button
+        self.page.on_back_button_pressed = self._handle_back
         
         
         # Media Controls (keyboard hotkeys)
@@ -1067,6 +1069,7 @@ class DabFletApp:
         pass
 
     def _show_search(self):
+        self.view_stack.clear() # Clear history on top-level nav
         self.current_view = "search"
         self.viewport.controls.clear()
         self.viewport.controls.append(ft.Text("Search", size=32, weight="bold"))
@@ -1092,6 +1095,7 @@ class DabFletApp:
         self.page.update()
 
     def _show_home(self):
+        self.view_stack.clear() # Clear history on top-level nav
         self.current_view = "home"
         self.viewport.controls.clear()
         self.viewport.controls.append(ft.Text("Discover Music", size=48, weight="bold"))
@@ -1721,12 +1725,17 @@ class DabFletApp:
                  self.page.run_thread(self._show_lyrics_view_update)
 
     def _show_lyrics_view(self):
-        # Toggle behavior: if already showing lyrics, go back to home
+        # Toggle behavior: if already showing lyrics, go back to home if stack empty, or pop
         if self.current_view == "lyrics":
-            self._show_home()
+            self._handle_back()
             self._update_player_bar_buttons()
             return
         
+        # Push to stack
+        if self.current_view != "lyrics":
+             arg = self.current_view_lib_id if self.current_view == "library_detail" else None
+             self.view_stack.append((self.current_view, arg))
+
         self.current_view = "lyrics"
         # Instant switch - clear and show immediately
         try:
@@ -2010,10 +2019,15 @@ class DabFletApp:
     def _show_queue(self, force=False):
         # Toggle behavior: if already showing queue, go back to home
         if self.current_view == "queue" and not force:
-            self._show_home()
+            self._handle_back()
             self._update_player_bar_buttons()
             return
         
+        # Push to stack
+        if self.current_view != "queue":
+             arg = self.current_view_lib_id if self.current_view == "library_detail" else None
+             self.view_stack.append((self.current_view, arg))
+
         self.current_view = "queue"
         
         # Use cached view if available and not dirty
@@ -2169,6 +2183,7 @@ class DabFletApp:
             self._play_track(self.queue[self.current_track_index])
 
     def _show_library(self):
+        self.view_stack.clear()
         self.current_view = "library"
         self.current_view_lib_id = None
         
@@ -2325,6 +2340,7 @@ class DabFletApp:
         self.page.update()
 
     def _show_remote_lib(self, lib):
+        self.current_view = "library_detail"
         self.current_view_lib_id = lib.get("id")
         self.viewport.controls.clear()
         
@@ -2778,6 +2794,63 @@ class DabFletApp:
         if hasattr(self, 'btn_vol') and self.btn_vol.current:
             self.btn_vol.current.icon_color = sec_col
             self.btn_vol.current.update()
+        
+        # ========== MOBILE PLAYER BAR THEME UPDATES ==========
+        # Mobile text controls
+        if hasattr(self, 'mobile_track_title'):
+            self.mobile_track_title.color = text_col
+            self.mobile_track_title.update()
+        if hasattr(self, 'mobile_track_artist'):
+            self.mobile_track_artist.color = sec_col
+            self.mobile_track_artist.update()
+        if hasattr(self, 'mobile_time_cur'):
+            self.mobile_time_cur.color = sec_col
+            self.mobile_time_cur.update()
+        if hasattr(self, 'mobile_time_end'):
+            self.mobile_time_end.color = sec_col
+            self.mobile_time_end.update()
+        
+        # Mobile seek slider
+        if hasattr(self, 'mobile_seek'):
+            self.mobile_seek.inactive_color = ft.Colors.BLACK12 if is_light else ft.Colors.WHITE_10
+            self.mobile_seek.update()
+        
+        # Mobile icon buttons
+        if hasattr(self, 'mobile_play_btn'):
+            self.mobile_play_btn.icon_color = text_col
+            self.mobile_play_btn.update()
+        if hasattr(self, 'mobile_prev_btn'):
+            self.mobile_prev_btn.icon_color = text_col
+            self.mobile_prev_btn.update()
+        if hasattr(self, 'mobile_shuffle_btn'):
+            shuffle_color = ft.Colors.GREEN if self.shuffle_enabled else sec_col
+            self.mobile_shuffle_btn.icon_color = shuffle_color
+            self.mobile_shuffle_btn.update()
+        if hasattr(self, 'mobile_repeat_btn'):
+            loop_color = ft.Colors.GREEN if self.loop_mode != "off" else sec_col
+            self.mobile_repeat_btn.icon_color = loop_color
+            self.mobile_repeat_btn.update()
+        if hasattr(self, 'mini_play_btn'):
+            self.mini_play_btn.icon_color = text_col
+            self.mini_play_btn.update()
+        if hasattr(self, 'mini_next_btn'):
+            self.mini_next_btn.icon_color = text_col
+            self.mini_next_btn.update()
+        
+        # Minimise label
+        if hasattr(self, 'minimise_controls'):
+            for ctrl in self.minimise_controls.controls:
+                if isinstance(ctrl, ft.Text):
+                    ctrl.color = sec_col
+                    ctrl.update()
+        
+        # Collapse/Expand buttons
+        if hasattr(self, 'collapse_btn'):
+            self.collapse_btn.icon_color = sec_col
+            self.collapse_btn.update()
+        if hasattr(self, 'expand_btn'):
+            self.expand_btn.icon_color = sec_col
+            self.expand_btn.update()
 
     def _show_banner(self, message, bgcolor=ft.Colors.GREEN, duration=3):
         """Show a notification banner at the top of the viewport"""
@@ -2831,8 +2904,9 @@ class DabFletApp:
             self._show_banner(f"Download failed: {message}", ft.Colors.RED_700)
     
     def _show_settings(self):
-        """Display settings panel in background thread to avoid freeze"""
+        self.view_stack.clear()
         self.current_view = "settings"
+        """Display settings panel in background thread to avoid freeze"""
         self.viewport.controls.clear()
         self.viewport.controls.append(ft.Text("Settings", size=32, weight="bold"))
         self.viewport.controls.append(ft.Container(height=20))
@@ -2974,6 +3048,8 @@ class DabFletApp:
 
 
     def _show_favorites(self):
+        self.view_stack.clear()
+        self.current_view = "favorites"
         if not self.api.user:
             self._show_home()
             self._show_banner("Please sign in to access your Liked Songs", ft.Colors.RED_400)
@@ -3323,6 +3399,73 @@ class DabFletApp:
             self._next_track()
         elif e.key == "Arrow Left":
             self._prev_track()
+        elif e.key == "Escape" or e.key == "Backspace":
+            self._handle_back()
+
+    def _handle_back(self, e=None):
+        """Handle back navigation (Escape or Back Button)"""
+        # 1. Close open Dialogs/Overlays
+        # Check overlay for open dialogs
+        if self.page.overlay:
+            for control in reversed(self.page.overlay):
+                if hasattr(control, "open") and control.open:
+                    control.open = False
+                    self.page.update()
+                    return
+        
+        # Check deprecated page.dialog just in case, safely
+        if hasattr(self.page, "dialog") and self.page.dialog and self.page.dialog.open:
+            self.page.dialog.open = False
+            self.page.update()
+            return
+
+        # 2. History Stack (Queue, Lyrics, etc.)
+        if self.current_view in ["queue", "lyrics", "album_detail"]:
+            if self.view_stack:
+                last_view, last_arg = self.view_stack.pop()
+                self._restore_view(last_view, last_arg)
+                return
+            else:
+                self._show_home()
+                return
+
+        # 3. Hierarchical Navigation
+        if self.current_view == "library_detail":
+            self._show_library()
+            return
+
+        if self.current_view in ["search", "library", "settings", "favorites", "import", "create_library"]:
+            self._show_home()
+            return
+            
+        # 4. Home - Minimize or Exit?
+        # On mobile, the OS handles exit if we don't handle it. 
+        # But we can minimize.
+        # self.page.window_minimize()
+        pass
+
+    def _restore_view(self, view_name, view_arg=None):
+        """Restore a view from history stack"""
+        if view_name == "home": self._show_home()
+        elif view_name == "search": self._show_search()
+        elif view_name == "library": self._show_library()
+        elif view_name == "favorites": self._show_favorites()
+        elif view_name == "settings": self._show_settings()
+        elif view_name == "library_detail" and view_arg:
+            # Need to find the library object by ID
+            # This is a bit tricky, let's look it up from cache
+            if self.cached_libraries:
+                for lib in self.cached_libraries:
+                    if lib.get("id") == view_arg:
+                        self._show_remote_lib(lib)
+                        break
+                else:
+                    self._show_library() # Fallback
+            else:
+                self._show_library() # Fallback
+        else:
+            self._show_home() # Fallback
+
 
 def main(page: ft.Page):
     DabFletApp(page)

@@ -1,0 +1,26 @@
+    def _update_theme_colors(self):
+        """Update all theme-dependent colors based on current theme"""
+        if self.current_theme == "light":
+            # Light mode colors - modern and clean
+            self.page_bg = "#F8F9FA"  # Very light gray
+            self.sidebar_bg = "#FFFFFF"  # Pure white
+            self.viewport_bg = "#FFFFFF"  # Pure white
+            self.card_bg = "#F8F9FA"  # Light gray for cards
+            self.card_hover_bg = "#E9ECEF"  # Slightly darker on hover
+            self.text_primary = "#212529"  # Almost black
+            self.text_secondary = "#6C757D"  # Medium gray
+            self.divider_color = "#DEE2E6"  # Light gray divider
+            self.input_bg = "#F8F9FA"  # Light gray input
+            self.input_border = "#CED4DA"  # Gray border
+        else:
+            # Dark mode colors - original
+            self.page_bg = "#020202"
+            self.sidebar_bg = "#0A0A0A"
+            self.viewport_bg = "#020202"
+            self.card_bg = "#1A1A1A"
+            self.card_hover_bg = "#2A2A2A"
+            self.text_primary = "#FFFFFF"
+            self.text_secondary = "#FFFFFF30"
+            self.divider_color = "#FFFFFF10"
+            self.input_bg = "#050505"
+            self.input_border = "#FFFFFF10"

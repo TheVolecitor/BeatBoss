@@ -85,6 +85,25 @@ Creates a standalone binary in `dist/linux`:
 flet build linux
 ```
 
+## Alternative Build Method (PyInstaller)
+If you prefer building a pure Python executable without the Flutter build chain, you can use PyInstaller with the provided spec file.
+
+### Prerequisites
+```bash
+pip install pyinstaller
+```
+
+### Build Command
+Run this command from the project root:
+```bash
+pyinstaller beatboss.spec --noconfirm
+```
+
+**Output:**
+- The standalone executable will be in `dist/BeatBoss/BeatBoss.exe`.
+- This creates a **one-directory** build for faster startup times.
+- You can create an installer for this output using [Inno Setup](https://jrsoftware.org/isdl.php).
+
 > [!TIP]
 > Use the provided `flet_rebuild.bat` on Windows to clean and rebuild the desktop version with a single click.
 

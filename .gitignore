@@ -15,12 +15,12 @@ build/
 dist/
 flet_build/
 *.exe
+!beatboss.spec
 
 # User Environment
 .env
 backup/
 *.bat
-!flet_rebuild.bat
 
 # IDE
 .vscode/

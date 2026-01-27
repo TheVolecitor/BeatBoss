@@ -1,0 +1,10 @@
+    def _update_theme_colors(self):
+        """Update theme colors based on current theme"""
+        if self.current_theme == "light":
+            self.page_bg = "#F8F9FA"
+            self.sidebar_bg = "#FFFFFF"
+            self.viewport_bg = "#FFFFFF"
+        else:
+            self.page_bg = "#020202"
+            self.sidebar_bg = "#0A0A0A"
+            self.viewport_bg = "#020202"
