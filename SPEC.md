@@ -43,9 +43,8 @@
 beatboss/
 ├── src/
 │   ├── main.py              # Application entry point
-│   ├── main_flet.py         # Flet UI implementation
 │   ├── player.py            # Audio playback engine
-│   ├── player_flet.py       # Flet-integrated player controls
+│   ├── *.py                 # Other python files
 │   └── assets/              # Icons, images
 │       ├── icon.ico         # Windows icon
 │       ├── icon_android.png # Android adaptive icon
