@@ -13,10 +13,7 @@ dependencies = [
     "google-api-python-client",
     "pynput",
     "colorama",
-    "python-dotenv",
-    "winrt-Windows-Media; sys_platform == 'win32'",
-    "winrt-Windows-Storage-Streams; sys_platform == 'win32'",
-    "winrt-Windows-Foundation; sys_platform == 'win32'"
+    "python-dotenv"
 ]
 
 [tool.flet.app]

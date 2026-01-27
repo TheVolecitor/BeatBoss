@@ -21,6 +21,10 @@ flet_build/
 .env
 backup/
 *.bat
+!build_android.bat
+!build_windows.bat
+!build_linux_appimage.bat
+!build_linux_deb.bat
 
 # IDE
 .vscode/

@@ -14,25 +14,56 @@ class Settings:
         self.settings = self._load_settings()
         
     def _get_settings_dir(self) -> Path:
-        """Get the settings directory (portable for .exe)"""
-        if os.name == 'nt':  # Windows
-            # Use APPDATA for portability
-            appdata = os.getenv('APPDATA')
-            if appdata:
-                settings_path = Path(appdata) / "BeatBoss"
-            else:
-                settings_path = Path.home() / ".syncplayer"
-        else:  # Linux/Mac
-            settings_path = Path.home() / ".syncplayer"
-        
-        # Create directory if it doesn't exist
-        settings_path.mkdir(parents=True, exist_ok=True)
-        return settings_path
-    
+        """Get the settings directory (portable for .exe and Android)"""
+        try:
+            if os.name == 'nt':  # Windows
+                appdata = os.getenv('APPDATA')
+                if appdata:
+                    settings_path = Path(appdata) / "BeatBoss"
+                else:
+                    settings_path = Path.home() / ".beatboss"
+            else:  # Linux/Mac/Android
+                # On Android Flet, Path.home() might map to /data which is restricted.
+                # Use current working directory which maps to app files dir.
+                settings_path = Path.cwd() / "settings"
+                
+            # Create directory if it doesn't exist
+            settings_path.mkdir(parents=True, exist_ok=True)
+            return settings_path
+        except Exception as e:
+            print(f"Error creating settings dir: {e}")
+            return Path(".") # Fallback to current directory
+
     def _get_default_download_location(self) -> str:
         """Get default download location"""
-        music_dir = Path.home() / "Music" / "SyncPlayer"
-        return str(music_dir)
+        try:
+            if os.name == 'nt':
+                music_dir = Path.home() / "Music" / "BeatBoss"
+            else:
+                # Android: Try public Download folder first
+                # Common path for Android downloads
+                public_dl = Path("/storage/emulated/0/Download/BeatBoss")
+                
+                # Check if we can write to it (basic permission / path check)
+                # Note: On newer Android, we might need to rely on 'try/except' at write time,
+                # but we can default to it here. The DownloadManager handles write errors.
+                # If this path doesn't exist or isn't accessible, we might fallback later.
+                # However, for 'default', let's use it.
+                music_dir = public_dl
+                
+                # If we are on Linux desktop, this path won't make sense, so fallback logic:
+                if not str(music_dir).startswith("/storage"):
+                     music_dir = Path.cwd() / "downloads"
+                else: 
+                     # Verify we assume this is Android if not NT.
+                     # But on Linux desktop, /storage/... doesn't exist.
+                     if not os.path.exists("/storage/emulated/0"):
+                          music_dir = Path.home() / "Music" / "BeatBoss"
+
+            # Don't try to create it here, just return the path
+            return str(music_dir)
+        except:
+             return str(Path.cwd())
     
     def _load_settings(self) -> Dict[str, Any]:
         """Load settings from JSON file or create defaults"""
@@ -124,8 +155,16 @@ class Settings:
         if track_data and isinstance(track_data, dict):
             path = track_data.get("path")
             # Verify file still exists
-            if path and Path(path).exists():
-                return path
+            if path:
+                exists = Path(path).exists()
+                # Debug logging for Android
+                if not exists and "/storage/" in path:
+                     print(f"[DEBUG] File check failed: {path}")
+                     # Try fallback check using os.path.exists or just assume true for now if it's in public storage?
+                     # No, if we can't read it, we can't play it.
+                
+                if exists:
+                    return path
         return None
     
     def add_downloaded_track(self, track_id: int, file_path: str, title: str, artist: str):

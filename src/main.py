@@ -17,7 +17,7 @@ from download_manager import DownloadManager
 from dotenv import load_dotenv
 
 # Hardcoded YouTube API Key for Build (NOT for Git)
-YT_API_KEY = "youtube api key here"
+YT_API_KEY = "yt api key here"
 
 if not YT_API_KEY or "AIza" not in YT_API_KEY:
     print("WARNING: YouTube API Key not found or invalid!")
@@ -151,6 +151,10 @@ class DabFletApp:
         # Audio Player Init
         self._setup_ui()
         
+        # Check Android Storage Permissions for Public Downloads
+        if self.page.platform == "android" or os.path.exists("/storage/emulated/0"):
+             self._check_android_storage()
+
         # Keyboard handling (Space to toggle)
         self.page.on_keyboard_event = self._on_keyboard
         # Mobile Back Button
@@ -196,6 +200,9 @@ class DabFletApp:
         # Check for missing API Key
         if not YT_API_KEY or "AIza" not in YT_API_KEY:
              threading.Timer(2.0, lambda: self._show_banner("Search disabled: YouTube API key missing in .env", ft.Colors.ORANGE_700)).start()
+
+        # Force initial layout update
+        self._on_window_resize(None)
 
     def _update_loop(self):
         while self.running:
@@ -866,7 +873,12 @@ class DabFletApp:
         """Handle window resize for responsive layout"""
         try:
             width = self.page.width or 1350
-            is_mobile = width < 600
+            
+            # Force mobile view on Android/iOS regardless of resolution reporting
+            if self.page.platform in ["android", "ios"]:
+                is_mobile = True
+            else:
+                is_mobile = width < 600
             
             # Update if mobile state changes OR if desktop width crosses expansion threshold (1000)
             crossing_threshold = (width >= 1000 and getattr(self, "_last_width", 1000) < 1000) or \
@@ -883,6 +895,15 @@ class DabFletApp:
     def _update_responsive_layout(self):
         """Update layout based on screen width"""
         try:
+            # Special case: Hide sidebar on auth screens
+            if self.current_view == "auth":
+                self.sidebar.visible = False
+                self.sidebar.update()
+                # Ensure main container padding is consistent
+                self.main_container.padding = ft.Padding(left=40, top=30, right=40, bottom=20)
+                self.main_container.update()
+                return
+
             if self.is_mobile_view:
                 # Mobile layout: narrow sidebar (icons only)
                 self.sidebar.width = 70
@@ -1097,6 +1118,11 @@ class DabFletApp:
     def _show_home(self):
         self.view_stack.clear() # Clear history on top-level nav
         self.current_view = "home"
+        
+        # Restore sidebar visibility
+        self.sidebar.visible = True
+        self._update_responsive_layout() # Restore proper layout state
+        
         self.viewport.controls.clear()
         self.viewport.controls.append(ft.Text("Discover Music", size=48, weight="bold"))
         
@@ -1119,9 +1145,22 @@ class DabFletApp:
                 self.viewport.controls.append(ft.Container(height=15))
                 # Display last 5 played tracks
                 self._display_tracks(self.play_history[:5])
+        
+        # Reinforce Back Button Handler (Android Fix)
+        try:
+             self.page.on_back_button_pressed = self._handle_back
+             self.page.update()
+        except:
+             pass
+             
         self.page.update()
 
     def _draw_login(self, is_signup=False):
+        # Hide sidebar for auth screens
+        self.current_view = "auth"
+        self.sidebar.visible = False
+        self.sidebar.update()
+        
         self.viewport.controls.clear()
         
         # Responsive width calculation
@@ -3466,6 +3505,50 @@ class DabFletApp:
         else:
             self._show_home() # Fallback
 
+
+    
+    def _check_android_storage(self):
+        """Check if we can write to public storage on Android"""
+        dl_path = self.settings.get_download_location()
+        if not dl_path: return
+
+        try:
+             test_file = Path(dl_path) / ".permission_test"
+             # Try to create directory if missing
+             Path(dl_path).mkdir(parents=True, exist_ok=True)
+             
+             # Try to write
+             with open(test_file, 'w') as f:
+                 f.write("ok")
+             
+             # Clean up
+             test_file.unlink()
+             print("Storage permission check: OK")
+             
+        except PermissionError:
+             print("Storage permission check: FAIL")
+             # Schedule a warning dialog after a delay
+             threading.Timer(1.0, lambda: self._show_permission_dialog(dl_path)).start()
+        except Exception as e:
+             print(f"Storage check error: {e}")
+
+    def _show_permission_dialog(self, path):
+        """Show permission warning dialog"""
+        def close_dlg(_):
+            self.page.dialog.open = False
+            self.page.update()
+            
+        dlg = ft.AlertDialog(
+            title=ft.Text("Storage Permission Needed"),
+            content=ft.Text(f"BeatBoss needs permission to save songs to:\n{path}\n\nPlease grant 'Storage' permission in Android Settings, or downloads may fail."),
+            actions=[
+                ft.TextButton("I Understand", on_click=close_dlg),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
 
 def main(page: ft.Page):
     DabFletApp(page)
