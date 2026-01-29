@@ -2,12 +2,13 @@
 
 BeatBoss is a high-performance, cross-platform music player client designed for audiophiles. Built with Flutter, it delivers a native, responsive experience on both Windows and Android.
 
+> **Note**: This project has been migrated from Flet (Python) to Flutter to resolve stability issues and ensure a robust, native performance across platforms.
+
+
 ## Features
 
-- **Cross-Platform**: Seamless experience on Windows and Android.
-- **High-Quality Playback**: 
-  - Windows: Direct MPV integration via `media_kit` for bit-perfect playback.
-  - Android: Native `ExoPlayer` backend via `just_audio`.
+- **Cross-Platform**: Seamless experience on Windows, Linux and Android.
+- **High-Quality Playback**
 - **Local Downloads**: Download tracks for offline listening with high-quality metadata.
 - **Last.fm Integration**: 
   - Full scrobbling support.
@@ -31,8 +32,8 @@ BeatBoss is a high-performance, cross-platform music player client designed for 
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/DAB-py.git
-   cd DAB-py
+   git clone https://github.com/TheVolecitor/BeatBoss.git
+   cd BeatBoss
    ```
 
 2. **Install Dependencies**
@@ -75,3 +76,7 @@ This project is open-source and **does not include private API keys**.
 
 ## License
 MIT License. See `LICENSE` file for details.
+
+## Disclaimer
+BeatBoss is solely a client-side audio player that streams or locally plays audio from the user's own library (remote or local). All rights belong to their respective owners.
+
