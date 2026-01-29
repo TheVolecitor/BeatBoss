@@ -1,31 +1,27 @@
 
-# System
-.DS_Store
-Thumbs.db
+# Misc
+*.class
+*.log
+*.lock
+*.ctxt
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-env/
-venv/
-
-# Flet/Flutter
+# Flutter/Dart/Pub
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
 build/
-dist/
-flet_build/
-*.exe
-!beatboss.spec
+flutter_*.png
+flutter_*.jpg
 
-# User Environment
-.env
-backup/
-*.bat
-!build_android.bat
-!build_windows.bat
-!build_linux_appimage.bat
-!build_linux_deb.bat
-
-# IDE
-.vscode/
+# Editor
 .idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Sensitive
+lib/core/services/spotify_service.dart

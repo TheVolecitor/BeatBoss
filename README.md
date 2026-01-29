@@ -1,112 +1,77 @@
 # BeatBoss
 
-[Download Latest Release](https://github.com/TheVolecitor/BeatBoss/releases)
-
-BeatBoss is a modern, cross-platform music player built with Python and Flet.
-Designed for a premium experience on Desktop (Windows/Linux) and Mobile (Android).
-
-## Project Structure
-```
-📁 .
-├── 📁 src              # Source code and assets
-│   ├── 📁 assets       # Icons and media
-│   └── main.py         # Entry point
-├── pyproject.toml      # Project configuration
-└── README.md
-```
+BeatBoss is a high-performance, cross-platform music player client designed for audiophiles. Built with Flutter, it delivers a native, responsive experience on both Windows and Android.
 
 ## Features
-- Streaming: Stream from public music sources.
-- Lyrics: Real-time lyrics integration.
-- Local Playback: Play downloaded tracks seamlessly.
-- Mobile Optimized: Clean 3-row player layout with collapse/expand support.
-- State Sync: Shuffle, Repeat, and Playback state synced across all platforms.
-- Dark/Light Mode: Sleek, glassmorphism-inspired UI.
 
-## Prerequisites
+- **Cross-Platform**: Seamless experience on Windows and Android.
+- **High-Quality Playback**: 
+  - Windows: Direct MPV integration via `media_kit` for bit-perfect playback.
+  - Android: Native `ExoPlayer` backend via `just_audio`.
+- **Local Downloads**: Download tracks for offline listening with high-quality metadata.
+- **Last.fm Integration**: 
+  - Full scrobbling support.
+  - Secure API signing (defaults to a private Cloudflare worker, but can be configured for personal use).
+- **Modern UI**:
+  - Dark/Light mode support.
+  - Adaptive layouts (Responsive Dashboard on Desktop, Bottom Navigation on Mobile).
+  - "Snappable" player pane and lyrics sheet.
+- **Smart Queue**: Drag-and-drop reordering, history tracking mode.
 
-### For End Users
-Download and run the latest installer for your platform. No external dependencies required.
-
-### For Developers
-1. Python 3.10+
-2. Flutter SDK (Required for building standalone apps)
-3. Dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Installation and Development
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/TheVolecitor/BeatBoss.git
-   cd BeatBoss
-   ```
-
-2. Run in Debug Mode:
-   Since the project is now configured with `pyproject.toml`, you can simply run:
-   ```bash
-   flet run
-   ```
-   (Alternatively: `flet run src/main.py`)
-
-## ⚙️ Configuration (Optional but Recommended)
-> [!IMPORTANT]
-> **To enable YouTube Music features, you must provide your own API Key.**
-
-Before building, edit `src/main.py` and replace the placeholder key:
-
-```python
-# src/main.py
-YT_API_KEY = "youtube api key here"
-```
-*Get a key from the [Google Cloud Console](https://console.cloud.google.com/).*
-
-## Building the Application
-
-BeatBoss uses the Flet build system. Configuration is handled in `pyproject.toml`.
-
-### 1. Build for Windows
-Creates a standalone executable in `dist/windows`:
-```bash
-flet build windows
-```
-
-### 2. Build for Android (APK)
-Creates a mobile-ready APK in `dist/apk`:
-```bash
-flet build apk
-```
-
-### 3. Build for Linux
-Creates a standalone binary in `dist/linux`:
-```bash
-flet build linux
-```
-
-## Alternative Build Method (PyInstaller)
-If you prefer building a pure Python executable without the Flutter build chain, you can use PyInstaller with the provided spec file.
+## Getting Started
 
 ### Prerequisites
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (Latest Stable)
+- [Git](https://git-scm.com/)
+- **Windows**: Visual Studio 2022 with C++ Desktop Development workload.
+- **Android**: Android Studio with SDK Command-line Tools.
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/DAB-py.git
+   cd DAB-py
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   flutter pub get
+   ```
+
+3. **Run the Application**
+
+   *Windows:*
+   ```bash
+   flutter run -d windows
+   ```
+
+   *Android:*
+   ```bash
+   flutter run -d android
+   ```
+
+## Building for Production
+
+### Windows (.exe)
 ```bash
-pip install pyinstaller
+flutter build windows
 ```
+The output can be found in `build/windows/runner/Release/`.
 
-### Build Command
-Run this command from the project root:
+### Android (.apk)
 ```bash
-pyinstaller beatboss.spec --noconfirm
+flutter build apk --release
 ```
+The output `app-release.apk` will be in `build/app/outputs/flutter-apk/`.
 
-**Output:**
-- The standalone executable will be in `dist/BeatBoss/BeatBoss.exe`.
-- This creates a **one-directory** build for faster startup times.
-- You can create an installer for this output using [Inno Setup](https://jrsoftware.org/isdl.php).
+## Configuration
 
-> [!TIP]
-> Use the provided `flet_rebuild.bat` on Windows to clean and rebuild the desktop version with a single click.
+### API Keys & Security
+This project is open-source and **does not include private API keys**.
+- **Spotify/YouTube**: Metadata is fetched via public web scraping; no API keys required.
+- **Last.fm**: Requires a valid API Key and Shared Secret. These can be configured in the Settings UI or by deploying your own signing worker.
 
-## Legal Disclaimer
-
-BeatBoss does not host, store, or distribute copyrighted content. It functions as a client-side player for publicly available streams. All rights belong to the respective content owners.
+## License
+MIT License. See `LICENSE` file for details.

@@ -1,0 +1,77 @@
+name: beatboss
+description: BeatBoss Music Player - A beautiful music streaming and download app.
+publish_to: 'none'
+version: 1.5.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Core
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  provider: ^6.1.2
+
+  # Networking
+  dio: ^5.4.1
+
+  # Audio Playback
+  just_audio: ^0.10.5
+  just_audio_media_kit: ^2.0.0
+  media_kit_libs_windows_video: ^1.0.0
+
+  just_audio_background: ^0.0.1-beta.17
+  audio_service: ^0.18.18
+  audio_service_win: ^0.0.2
+  audio_session: ^0.2.2
+
+
+  # YouTube (Metadata Extraction)
+  youtube_explode_dart: ^2.2.1
+
+  # Local Storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.2
+  flutter_secure_storage: ^9.0.0
+  http: ^1.2.0
+  crypto: ^3.0.3
+
+  # UI Utilities
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+
+  # Utilities
+  url_launcher: ^6.2.4
+  permission_handler: ^11.3.0
+  html: ^0.15.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.8
+  flutter_launcher_icons: ^0.13.1
+
+flutter_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/icon.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icon.png"
+    background_color: "#hex_code"
+    theme_color: "#hex_code"
+  windows:
+    generate: true
+    image_path: "assets/icon.png"
+    icon_size: 256
+
+flutter:
+  uses-material-design: true
