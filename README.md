@@ -67,6 +67,37 @@ flutter build apk --release
 ```
 The output `app-release.apk` will be in `build/app/outputs/flutter-apk/`.
 
+### Linux (AppImage / .deb)
+
+**Prerequisites**:
+- Linux environment (Ubuntu 20.04+ recommended).
+- Dependencies: `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `liblzma-dev`.
+
+**1. Enable Linux Support** (Run once if `linux/` folder is missing)
+```bash
+flutter create --platforms=linux .
+```
+
+**2. Build Release Bundle**
+```bash
+flutter build linux
+```
+
+**3. Packaging (AppImage / .deb)**
+We recommend using [flutter_distributor](https://pub.dev/packages/flutter_distributor).
+
+Install the tool:
+```bash
+dart pub global activate flutter_distributor
+```
+
+Generate release:
+```bash
+flutter_distributor package --platform linux --targets appimage,deb
+```
+Outputs will be in `dist/`.
+
+
 ## Configuration
 
 ### API Keys & Security
