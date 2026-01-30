@@ -10,8 +10,53 @@ import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_screen.dart';
 
 /// Player Bar - bottom player controls matching original exactly
-class PlayerBar extends StatelessWidget {
+class PlayerBar extends StatefulWidget {
   const PlayerBar({super.key});
+
+  @override
+  State<PlayerBar> createState() => _PlayerBarState();
+}
+
+class _PlayerBarState extends State<PlayerBar> {
+  OverlayEntry? _lyricsOverlay;
+
+  void _toggleLyrics(BuildContext context, bool isDark) {
+    if (_lyricsOverlay != null) {
+      _removeLyricsOverlay();
+    } else {
+      _showLyricsOverlay(context, isDark);
+    }
+  }
+
+  void _removeLyricsOverlay() {
+    _lyricsOverlay?.remove();
+    _lyricsOverlay = null;
+  }
+
+  void _showLyricsOverlay(BuildContext context, bool isDark) {
+    final overlay = Overlay.of(context);
+
+    _lyricsOverlay = OverlayEntry(
+      builder: (context) => Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 84, // Sit exactly above the player bar
+        child: Material(
+          color: (isDark ? Colors.black : Colors.white).withOpacity(0.9),
+          child: LyricsList(isDark: isDark), // Reusing the refactored widget
+        ),
+      ),
+    );
+
+    overlay.insert(_lyricsOverlay!);
+  }
+
+  @override
+  void dispose() {
+    _removeLyricsOverlay();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,8 +72,7 @@ class PlayerBar extends StatelessWidget {
     }
 
     return Container(
-      height:
-          isMobile ? 60 : 120, // Increased from 90 to 120 to prevent overflow
+      height: isMobile ? 60 : 72, // Increased slightly to 72 to fix overflow
       decoration: BoxDecoration(
         color:
             (isDark ? AppTheme.darkCard : AppTheme.lightCard).withOpacity(0.95),
@@ -42,7 +86,12 @@ class PlayerBar extends StatelessWidget {
       ),
       child: isMobile
           ? _MobilePlayerBar(track: track, player: player, isDark: isDark)
-          : _DesktopPlayerBar(track: track, player: player, isDark: isDark),
+          : _DesktopPlayerBar(
+              track: track,
+              player: player,
+              isDark: isDark,
+              onLyricsTap: () => _toggleLyrics(context, isDark),
+            ),
     );
   }
 }
@@ -51,11 +100,13 @@ class _DesktopPlayerBar extends StatelessWidget {
   final Track track;
   final AudioPlayerService player;
   final bool isDark;
+  final VoidCallback onLyricsTap;
 
   const _DesktopPlayerBar({
     required this.track,
     required this.player,
     required this.isDark,
+    required this.onLyricsTap,
   });
 
   String _formatDuration(Duration d) {
@@ -70,218 +121,236 @@ class _DesktopPlayerBar extends StatelessWidget {
     final secondaryColor = isDark ? Colors.white30 : Colors.black38;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: 15, vertical: 5), // Reduced vertical padding
+      padding: const EdgeInsets.symmetric(horizontal: 15),
       child: Row(
         children: [
-          // Track info with art
-          _TrackArt(imageUrl: track.displayImage, isDownloaded: false),
-          const SizedBox(width: 12),
+          // Left: Track Info (Fixed Width)
           SizedBox(
-            width: 180,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            width: 260,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  track.title,
-                  style:
-                      TextStyle(color: textColor, fontWeight: FontWeight.bold),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  track.artist,
-                  style: TextStyle(color: secondaryColor, fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                // Hi-Res badge
-                if (track.isHiRes)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryGreen,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      track.audioQuality!.displayText,
-                      style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold),
-                    ),
+                _TrackArt(
+                    imageUrl: track.displayImage,
+                    isDownloaded: false,
+                    size: 46),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        track.title,
+                        style: TextStyle(
+                            color: textColor, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        track.artist,
+                        style: TextStyle(color: secondaryColor, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (track.isHiRes)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            track.audioQuality!.displayText,
+                            style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
 
-          const SizedBox(width: 20),
-
-          // Center controls
+          // Center: Controls (Expanded to fill middle)
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Control buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Shuffle
-                    IconButton(
-                      icon: const Icon(Icons.shuffle),
-                      iconSize: 24, // Increased
-                      color: player.shuffleEnabled
-                          ? AppTheme.primaryGreen
-                          : secondaryColor,
-                      onPressed: player.toggleShuffle,
-                    ),
-                    // Previous
-                    IconButton(
-                      icon: const Icon(Icons.skip_previous),
-                      iconSize: 32, // Increased
-                      color: textColor,
-                      onPressed: player.previousTrack,
-                    ),
-                    // Play/Pause
-                    InkWell(
-                      onTap: player.togglePlayPause,
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 5),
-                        width: 50, // Increased
-                        height: 50, // Increased
-                        decoration: const BoxDecoration(
-                            color: AppTheme.primaryGreen,
-                            shape: BoxShape.circle),
-                        child: Icon(
-                          player.isPlaying ? Icons.pause : Icons.play_arrow,
-                          color: Colors.black,
-                          size: 32, // Increased
+                Padding(
+                  padding: const EdgeInsets.only(
+                      top: 6, bottom: 2), // Adjusted for vertical center
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.shuffle),
+                        iconSize: 20,
+                        color: player.shuffleEnabled
+                            ? AppTheme.primaryGreen
+                            : secondaryColor,
+                        onPressed: player.toggleShuffle,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 15),
+                      IconButton(
+                        icon: const Icon(Icons.skip_previous),
+                        iconSize: 28,
+                        color: textColor,
+                        onPressed: player.previousTrack,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 15),
+                      InkWell(
+                        onTap: player.togglePlayPause,
+                        borderRadius: BorderRadius.circular(30),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 5),
+                          width: 34,
+                          height: 34,
+                          decoration: const BoxDecoration(
+                              color: AppTheme.primaryGreen,
+                              shape: BoxShape.circle),
+                          child: Icon(
+                            player.isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.black,
+                            size: 20,
+                          ),
                         ),
                       ),
-                    ),
-                    // Next
-                    IconButton(
-                      icon: const Icon(Icons.skip_next),
-                      iconSize: 32, // Increased
-                      color: textColor,
-                      onPressed: player.nextTrack,
-                    ),
-                    // Repeat
-                    IconButton(
-                      icon: Icon(
-                        player.loopMode == LoopMode.one
-                            ? Icons.repeat_one
-                            : Icons.repeat,
+                      const SizedBox(width: 15),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next),
+                        iconSize: 28,
+                        color: textColor,
+                        onPressed: player.nextTrack,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
-                      iconSize: 24, // Increased
-                      color: player.loopMode != LoopMode.off
-                          ? AppTheme.primaryGreen
-                          : secondaryColor,
-                      onPressed: player.toggleLoop,
-                    ),
-                  ],
+                      const SizedBox(width: 15),
+                      IconButton(
+                        icon: Icon(
+                          player.loopMode == LoopMode.one
+                              ? Icons.repeat_one
+                              : Icons.repeat,
+                        ),
+                        iconSize: 20,
+                        color: player.loopMode != LoopMode.off
+                            ? AppTheme.primaryGreen
+                            : secondaryColor,
+                        onPressed: player.toggleLoop,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
                 ),
                 // Seek slider
-                Row(
-                  children: [
-                    Text(
-                      _formatDuration(player.position),
-                      style: TextStyle(color: secondaryColor, fontSize: 11),
-                    ),
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          // Buffered Indicator
-                          Positioned.fill(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6.0), // Align with slider track
-                                child: LinearProgressIndicator(
-                                  value: player.bufferedSliderValue / 1000,
-                                  backgroundColor:
-                                      isDark ? Colors.white10 : Colors.black12,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    (isDark ? Colors.white : Colors.black)
-                                        .withOpacity(0.3),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Text(
+                        _formatDuration(player.position),
+                        style: TextStyle(color: secondaryColor, fontSize: 11),
+                      ),
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6.0),
+                                  child: LinearProgressIndicator(
+                                    value: player.bufferedSliderValue / 1000,
+                                    backgroundColor: isDark
+                                        ? Colors.white10
+                                        : Colors.black12,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      (isDark ? Colors.white : Colors.black)
+                                          .withOpacity(0.3),
+                                    ),
+                                    minHeight: 4,
                                   ),
-                                  minHeight:
-                                      4, // Match slider track height approximately
                                 ),
                               ),
                             ),
-                          ),
-                          // Seek Slider
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppTheme.primaryGreen,
-                              inactiveTrackColor:
-                                  Colors.transparent, // Let buffer show through
-                              trackHeight: 4,
-                              thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 6),
-                              overlayShape: const RoundSliderOverlayShape(
-                                  overlayRadius: 14),
+                            SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: AppTheme.primaryGreen,
+                                inactiveTrackColor: Colors.transparent,
+                                trackHeight: 2,
+                                thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 6),
+                                overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 14),
+                              ),
+                              child: Slider(
+                                value: player.sliderValue.toDouble(),
+                                min: 0,
+                                max: 1000,
+                                onChanged: (value) =>
+                                    player.seekToSlider(value.toInt()),
+                              ),
                             ),
-                            child: Slider(
-                              value: player.sliderValue.toDouble(),
-                              min: 0,
-                              max: 1000,
-                              onChanged: (value) =>
-                                  player.seekToSlider(value.toInt()),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    Text(
-                      _formatDuration(player.duration),
-                      style: TextStyle(color: secondaryColor, fontSize: 11),
-                    ),
-                  ],
+                      Text(
+                        _formatDuration(player.duration),
+                        style: TextStyle(color: secondaryColor, fontSize: 11),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(width: 20),
-
-          // Right controls
-          Row(
-            children: [
-              // Lyrics button
-              IconButton(
-                icon: const Icon(Icons.lyrics_outlined),
-                color: secondaryColor,
-                onPressed: () => _showLyrics(context),
+          // Right: Controls (Fixed Width to match Left)
+          SizedBox(
+            width: 260,
+            child: Padding(
+              padding:
+                  const EdgeInsets.only(right: 20.0), // Shift closer inwards
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.lyrics_outlined),
+                    color: secondaryColor,
+                    onPressed: onLyricsTap,
+                    iconSize: 20,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.queue_music),
+                    color: secondaryColor,
+                    onPressed: () => _showQueue(context),
+                    iconSize: 20,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  _VolumeButton(player: player, secondaryColor: secondaryColor),
+                ],
               ),
-              // Queue button
-              IconButton(
-                icon: const Icon(Icons.queue_music),
-                color: secondaryColor,
-                onPressed: () => _showQueue(context),
-              ),
-              // Volume with Custom Overlay
-              _VolumeButton(player: player, secondaryColor: secondaryColor),
-            ],
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  void _showLyrics(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const LyricsScreen(),
     );
   }
 
@@ -381,7 +450,11 @@ class _VolumeButtonState extends State<_VolumeButton> {
       child: IconButton(
         icon:
             Icon(widget.player.volume > 0 ? Icons.volume_up : Icons.volume_off),
+        iconSize: 20,
         color: widget.secondaryColor,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        constraints: const BoxConstraints(),
+        visualDensity: VisualDensity.compact,
         onPressed: _toggleVolumeSlider,
       ),
     );

@@ -271,14 +271,13 @@ class _AppShellState extends State<AppShell> {
     return InkWell(
       onTap: () => _onNavTap(index),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? (isDark ? Colors.white10 : Colors.black.withOpacity(0.05))
+              ? AppTheme.primaryGreen.withOpacity(0.15)
               : Colors.transparent,
-          border: isSelected
-              ? Border(left: BorderSide(color: AppTheme.primaryGreen, width: 3))
-              : null,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [

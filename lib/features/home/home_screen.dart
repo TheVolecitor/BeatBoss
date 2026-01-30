@@ -8,6 +8,7 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/dab_api_service.dart';
 import '../../core/models/models.dart';
 import '../../core/services/history_service.dart';
+import '../import/playlist_import_dialog.dart';
 
 /// Home Screen - displays play history and welcome message, or Login if not authenticated
 class HomeScreen extends StatefulWidget {
@@ -57,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final username = api.user?.username ?? 'User';
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 5, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -90,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          const SizedBox(height: 30),
+          const SizedBox(height: 15),
 
           // Play history section
           if (playHistory.isNotEmpty) ...[
@@ -157,11 +158,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Import Playlist',
                 isDark: isDark,
                 onTap: () {
-                  // For now, redirect to Search (where import button exists) is safest without larger refactor,
-                  // BUT user asked for "Import button in home screen too".
-                  // Let's rely on navigating to Search for now as the "Hub" for finding music.
-                  // Actually, I should probably copy the _showImportDialog logic here if feasible.
-                  // But `ImportDialog` is in `featuimport '../import/playlist_import_dialog.dart';`.
+                  showDialog(
+                    context: context,
+                    builder: (context) => const PlaylistImportDialog(),
+                  );
                 },
               ),
             ],

@@ -51,224 +51,119 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Settings',
-            style: TextStyle(
-              color: isDark ? Colors.white : Colors.black,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 30),
-
-          // Settings card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Theme toggle
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Theme',
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Text(
-                          'Light Mode',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black45,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Switch(
-                          value: !isDark,
-                          onChanged: (value) {
-                            settings.toggleTheme();
-                          },
-                          activeThumbColor: AppTheme.primaryGreen,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                const Divider(height: 30),
-
-                // Download location
-                Text(
-                  'Download Location',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _downloadLocation ?? 'Loading...',
-                  style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.black45,
-                    fontSize: 14,
-                  ),
-                ),
-
-                const Divider(height: 30),
-
-                // Active downloads
-                if (downloadManager.hasActiveDownloads) ...[
-                  Text(
-                    'Active Downloads: ${downloadManager.activeDownloads.length}',
-                    style: const TextStyle(
-                      color: Colors.blue,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                ],
-
-                // Storage info
-                Text(
-                  'Downloaded Tracks: ${_downloadedCount ?? 0}',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Storage Used: ${_formatBytes(_storageSize ?? 0)}',
-                  style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.black45,
-                    fontSize: 14,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Clear cache button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _clearCache,
-                    icon: const Icon(Icons.delete_sweep),
-                    label: const Text('Clear Downloaded Tracks'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Sign Out Button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final api = context.read<DabApiService>();
-                final settings = context.read<SettingsService>();
-
-                api.clearUser();
-                await settings.clearUser();
-
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Logged out successfully'),
-                    backgroundColor: Colors.blue,
-                  ));
-                }
-              },
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(vertical: 15),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Text(
+              'Settings',
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black,
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
 
-          const SizedBox(height: 30),
-
-          // Last.fm Section
-          _LastFmSection(isDark: isDark),
-
-          const SizedBox(height: 30),
-
-          // About section
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'About',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+          // Appearance Section
+          _SettingsSection(
+            title: 'Appearance',
+            isDark: isDark,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.dark_mode_outlined),
+                title: const Text('Dark Mode'),
+                trailing: Switch(
+                  value: isDark,
+                  onChanged: (val) => settings.toggleTheme(),
+                  activeColor: AppTheme.primaryGreen,
                 ),
-                const SizedBox(height: 15),
-                Row(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.music_note,
-                          color: Colors.black, size: 30),
-                    ),
-                    const SizedBox(width: 15),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'BeatBoss',
-                          style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'Version 1.5.0 (Flutter)',
-                          style: TextStyle(
-                            color: isDark ? Colors.white54 : Colors.black45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
+
+          const SizedBox(height: 20),
+
+          // Downloads Section
+          _SettingsSection(
+            title: 'Downloads & Storage',
+            isDark: isDark,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: const Text('Download Location'),
+                subtitle: Text(_downloadLocation ?? 'Loading...'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_done),
+                title: const Text('Downloaded Tracks'),
+                subtitle: Text('$_downloadedCount tracks'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.storage),
+                title: const Text('Storage Used'),
+                subtitle: Text(_formatBytes(_storageSize ?? 0)),
+              ),
+              if (downloadManager.hasActiveDownloads)
+                ListTile(
+                  leading: const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  title: Text(
+                      '${downloadManager.activeDownloads.length} Active Downloads'),
+                ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('Clear Downloads',
+                    style: TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w600)),
+                onTap: _clearCache,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Integrations (Last.fm)
+          _SettingsSection(
+            title: 'Integrations',
+            isDark: isDark,
+            children: [
+              _LastFmTile(isDark: isDark),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // About & Account
+          _SettingsSection(
+            title: 'About & Account',
+            isDark: isDark,
+            children: [
+              const ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('Version'),
+                subtitle: Text('1.5.0 (Flutter)'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Sign Out',
+                    style: TextStyle(
+                        color: Colors.red, fontWeight: FontWeight.w600)),
+                onTap: () async {
+                  final api = context.read<DabApiService>();
+                  final set = context.read<SettingsService>();
+                  api.clearUser();
+                  await set.clearUser();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Logged out successfully')));
+                  }
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 40),
         ],
       ),
     );
@@ -315,164 +210,159 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-class _LastFmSection extends StatefulWidget {
+class _SettingsSection extends StatelessWidget {
+  final String title;
   final bool isDark;
-  const _LastFmSection({required this.isDark});
+  final List<Widget> children;
+
+  const _SettingsSection({
+    required this.title,
+    required this.isDark,
+    required this.children,
+  });
 
   @override
-  State<_LastFmSection> createState() => _LastFmSectionState();
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 10, bottom: 10),
+          child: Text(
+            title,
+            style: TextStyle(
+              color: isDark ? Colors.white70 : Colors.black54,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              for (int i = 0; i < children.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    height: 1,
+                    indent: 60, // Align with text start
+                    endIndent: 20,
+                    color: isDark
+                        ? Colors.white10
+                        : Colors.black.withOpacity(0.05),
+                  ),
+                children[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _LastFmSectionState extends State<_LastFmSection> {
+class _LastFmTile extends StatefulWidget {
+  final bool isDark;
+  const _LastFmTile({required this.isDark});
+
+  @override
+  State<_LastFmTile> createState() => _LastFmTileState();
+}
+
+class _LastFmTileState extends State<_LastFmTile> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
   @override
-  void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    // Import LastFmService logic
-    // We assume context.watch works because we added ChangeNotifierProvider in main
-    // But we need to import service file at top of settings_screen.dart
     final lastFm = context.watch<LastFmService>();
-    final isDark = widget.isDark;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.radio, color: Colors.red, size: 28),
-              const SizedBox(width: 10),
-              Text(
-                'Last.fm Scrobbling',
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+    if (lastFm.isAuthenticated) {
+      return ListTile(
+        leading: const Icon(Icons.radio, color: Colors.blue),
+        title: const Text('Last.fm'),
+        subtitle: Text('Connected as ${lastFm.username}'),
+        trailing: TextButton(
+          onPressed: () async => await lastFm.logout(),
+          child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
+        ),
+      );
+    }
+
+    return ExpansionTile(
+      leading: const Icon(Icons.radio, color: Colors.blue),
+      title: const Text('Connect Last.fm'),
+      subtitle: const Text('Scrobble your music history'),
+      childrenPadding: const EdgeInsets.all(20),
+      children: [
+        TextField(
+          controller: _usernameController,
+          decoration: const InputDecoration(
+            labelText: 'Username',
+            prefixIcon: Icon(Icons.person),
+            border: OutlineInputBorder(),
           ),
-          const SizedBox(height: 15),
-          if (lastFm.isAuthenticated) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.black26 : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Connected',
-                          style: TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold)),
-                      Text(lastFm.username ?? 'Unknown User',
-                          style: TextStyle(
-                              color: isDark ? Colors.white70 : Colors.black87)),
-                    ],
-                  )
-                ],
-              ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _passwordController,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Password',
+            prefixIcon: Icon(Icons.lock),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 15),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isLoading
+                ? null
+                : () async {
+                    if (_usernameController.text.isEmpty ||
+                        _passwordController.text.isEmpty) return;
+                    setState(() => _isLoading = true);
+                    final success = await lastFm.login(
+                        _usernameController.text, _passwordController.text);
+                    if (mounted) {
+                      setState(() => _isLoading = false);
+                      if (!success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Last.fm Login Failed')));
+                      } else {
+                        _usernameController.clear();
+                        _passwordController.clear();
+                      }
+                    }
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: Colors.black,
             ),
-            const SizedBox(height: 15),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () async {
-                  await lastFm.logout();
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
-                ),
-                child: const Text('Disconnect'),
-              ),
-            ),
-          ] else ...[
-            const Text(
-                'Connect your Last.fm account to scrobble your music history.'),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _usernameController,
-              decoration: InputDecoration(
-                labelText: 'Username',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 15),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoading
-                    ? null
-                    : () async {
-                        if (_usernameController.text.isEmpty ||
-                            _passwordController.text.isEmpty) return;
-
-                        setState(() => _isLoading = true);
-                        final success = await lastFm.login(
-                            _usernameController.text, _passwordController.text);
-                        if (mounted) {
-                          setState(() => _isLoading = false);
-                          if (!success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Last.fm Login Failed: Invalid credentials')),
-                            );
-                          } else {
-                            _usernameController.clear();
-                            _passwordController.clear();
-                          }
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Text('Connect'),
-              ),
-            ),
-          ]
-        ],
-      ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.black))
+                : const Text('Connect',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ),
+      ],
     );
   }
 }

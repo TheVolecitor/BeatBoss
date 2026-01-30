@@ -49,14 +49,36 @@ class TrackListTile extends StatelessWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         leading: _buildLeading(track),
-        title: Text(
-          track.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                track.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            if (track.isHiRes) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGreen,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text('Hi-Res',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    )),
+              ),
+            ],
+          ],
         ),
         subtitle: Text(
           track.artist,
@@ -142,11 +164,32 @@ class TrackListTile extends StatelessWidget {
         tooltip: 'Downloaded',
       );
     } else if (isDownloading) {
+      final progress = downloadManager.getProgress(track.id.toString());
       return Container(
-        width: 20,
-        height: 20,
+        width: 24,
+        height: 24,
         margin: const EdgeInsets.only(right: 12),
-        child: const CircularProgressIndicator(strokeWidth: 2),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            CircularProgressIndicator(
+              value: progress != null ? progress / 100 : null,
+              strokeWidth: 3,
+              backgroundColor: isDark ? Colors.white10 : Colors.black12,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
+            ),
+            if (progress != null)
+              Text(
+                '${progress.toInt()}',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+          ],
+        ),
       );
     } else {
       return IconButton(

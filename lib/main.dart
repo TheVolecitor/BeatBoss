@@ -16,6 +16,7 @@ import 'core/services/download_manager_service.dart';
 import 'core/services/youtube_service.dart';
 import 'core/services/spotify_service.dart';
 import 'core/services/last_fm_service.dart';
+import 'core/services/discord_rpc_service.dart';
 import 'features/app_shell.dart';
 
 import 'core/services/history_service.dart';
@@ -61,12 +62,16 @@ void main() async {
   final lastFmService = LastFmService(); // New
   await lastFmService.init();
 
+  final discordRpcService = DiscordRpcService();
+  discordRpcService.initialize();
+
   // 4. UI Audio Service
   final audioPlayerService = AudioPlayerService(
     handler: audioHandler as AppAudioHandler,
     dabApiService: dabApiService,
     historyService: historyService,
-    lastFmService: lastFmService, // Inject
+    lastFmService: lastFmService,
+    discordRpcService: discordRpcService, // Inject
   );
 
   // Auto-login

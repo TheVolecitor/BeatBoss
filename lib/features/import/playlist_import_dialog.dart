@@ -67,7 +67,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
             .map((e) =>
                 ImportItem(id: e.videoId, title: e.title, subtitle: e.channel))
             .toList();
-      } /* else if (spotifyService.isValidPlaylistUrl(url)) {
+      } else if (spotifyService.isValidPlaylistUrl(url)) {
         final spItems = await spotifyService.getPlaylistTracks(url);
         // Generate unique ID for Spotify items using index or title signature
         items = spItems
@@ -78,8 +78,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                 title: e.value.title,
                 subtitle: e.value.artist))
             .toList();
-      } */
-      else {
+      } else {
         throw Exception(
             'Invalid URL. Please enter a valid YouTube playlist URL.');
       }
@@ -195,12 +194,12 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
         return Column(
           children: [
             const Text(
-                'Enter a YouTube Playlist URL to fetch tracks.\n(Spotify import is temporarily unavailable)'),
+                'Enter a YouTube or Spotify Playlist URL to fetch tracks.'),
             const SizedBox(height: 20),
             TextField(
               controller: _urlController,
               decoration: const InputDecoration(
-                hintText: 'https://www.youtube.com/playlist?list=...',
+                hintText: 'YouTube or Spotify Playlist URL...',
                 border: OutlineInputBorder(),
               ),
               onSubmitted: (_) => _fetchPlaylist(),

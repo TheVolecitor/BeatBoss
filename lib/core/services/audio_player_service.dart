@@ -8,6 +8,8 @@ import 'audio_handler.dart';
 import 'history_service.dart';
 import 'last_fm_service.dart';
 
+import 'discord_rpc_service.dart';
+
 class AudioPlayerService with ChangeNotifier {
   final AppAudioHandler _handler;
   final DabApiService _dabApiService;
@@ -71,6 +73,7 @@ class AudioPlayerService with ChangeNotifier {
 
   final HistoryService _historyService;
   final LastFmService _lastFmService;
+  final DiscordRpcService _discordRpcService; // Discord
   bool _hasScrobbled = false;
 
   AudioPlayerService({
@@ -78,10 +81,12 @@ class AudioPlayerService with ChangeNotifier {
     required DabApiService dabApiService,
     required HistoryService historyService,
     required LastFmService lastFmService,
+    required DiscordRpcService discordRpcService,
   })  : _handler = handler,
         _dabApiService = dabApiService,
         _historyService = historyService,
-        _lastFmService = lastFmService {
+        _lastFmService = lastFmService,
+        _discordRpcService = discordRpcService {
     _init();
   }
 
@@ -141,6 +146,7 @@ class AudioPlayerService with ChangeNotifier {
           // Last.fm: Update Now Playing & Reset Scrobble
           _hasScrobbled = false;
           _lastFmService.updateNowPlaying(_currentTrack!);
+          _updateDiscordPresence();
         }
         notifyListeners();
       }
@@ -201,6 +207,7 @@ class AudioPlayerService with ChangeNotifier {
         if (playing != _isPlaying) {
           _isPlaying = playing;
           notify = true;
+          _updateDiscordPresence();
         }
 
         if (notify) {
@@ -269,10 +276,14 @@ class AudioPlayerService with ChangeNotifier {
       final position = Duration(
           milliseconds: (value / 1000 * _duration.inMilliseconds).round());
       await _handler.seek(position);
+      _updateDiscordPresence();
     }
   }
 
-  Future<void> seekTo(Duration position) => _handler.seek(position);
+  Future<void> seekTo(Duration position) async {
+    await _handler.seek(position);
+    _updateDiscordPresence();
+  }
 
   Future<void> nextTrack() => _handler.skipToNext();
   Future<void> previousTrack() => _handler.skipToPrevious();
@@ -393,9 +404,23 @@ class AudioPlayerService with ChangeNotifier {
     }
   }
 
+  void _updateDiscordPresence() {
+    if (_currentTrack == null) {
+      _discordRpcService.clearPresence();
+      return;
+    }
+    _discordRpcService.updatePresence(
+      track: _currentTrack!,
+      isPlaying: _isPlaying,
+      position: _position,
+      duration: _duration,
+    );
+  }
+
   @override
   void dispose() {
     _stopTicker();
+    _discordRpcService.dispose();
     super.dispose();
   }
 }
