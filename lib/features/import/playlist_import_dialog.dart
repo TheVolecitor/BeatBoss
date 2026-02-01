@@ -167,8 +167,8 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
     final isDark = settings.isDarkMode;
 
     return AlertDialog(
-      title: Row(
-        children: const [
+      title: const Row(
+        children: [
           Icon(Icons.playlist_play, color: AppTheme.primaryGreen),
           SizedBox(width: 10),
           Text('Playlist Import'),
@@ -254,11 +254,13 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
         return FutureBuilder<List<MusicLibrary>>(
           future: context.read<DabApiService>().getLibraries(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData)
+            if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
+            }
             final libs = snapshot.data!;
-            if (libs.isEmpty)
+            if (libs.isEmpty) {
               return const Center(child: Text('No libraries found.'));
+            }
 
             return Column(
               children: [

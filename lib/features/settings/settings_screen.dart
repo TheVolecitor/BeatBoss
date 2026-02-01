@@ -74,7 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: Switch(
                   value: isDark,
                   onChanged: (val) => settings.toggleTheme(),
-                  activeColor: AppTheme.primaryGreen,
+                  activeThumbColor: AppTheme.primaryGreen,
                 ),
               ),
             ],
@@ -172,8 +172,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024)
+    if (bytes < 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
@@ -333,7 +334,9 @@ class _LastFmTileState extends State<_LastFmTile> {
                 ? null
                 : () async {
                     if (_usernameController.text.isEmpty ||
-                        _passwordController.text.isEmpty) return;
+                        _passwordController.text.isEmpty) {
+                      return;
+                    }
                     setState(() => _isLoading = true);
                     final success = await lastFm.login(
                         _usernameController.text, _passwordController.text);

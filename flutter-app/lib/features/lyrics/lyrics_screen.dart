@@ -26,7 +26,7 @@ class LyricsScreen extends StatelessWidget {
             color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          child: LyricsList(
+          child: _LyricsList(
             scrollController: scrollController,
             isDark: isDark,
           ),
@@ -36,35 +36,31 @@ class LyricsScreen extends StatelessWidget {
   }
 }
 
-class LyricsList extends StatefulWidget {
-  final ScrollController? scrollController;
+class _LyricsList extends StatefulWidget {
+  final ScrollController scrollController;
   final bool isDark;
 
-  const LyricsList({this.scrollController, required this.isDark, super.key});
+  const _LyricsList({required this.scrollController, required this.isDark});
 
   @override
-  State<LyricsList> createState() => _LyricsListState();
+  State<_LyricsList> createState() => _LyricsListState();
 }
 
-class _LyricsListState extends State<LyricsList> {
-  late ScrollController _autoScrollController;
+class _LyricsListState extends State<_LyricsList> {
   int _prevIndex = -1;
-  // ignore: unused_field
   final bool _userScrolled = false;
 
   @override
   void initState() {
     super.initState();
-    _autoScrollController = widget.scrollController ?? ScrollController();
-    _autoScrollController.addListener(_onScroll);
+    // Optional: Detect user scroll start to pause auto-scroll?
+    // For now, allow auto-scroll always as it's triggered by song progress.
+    widget.scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    _autoScrollController.removeListener(_onScroll);
-    if (widget.scrollController == null) {
-      _autoScrollController.dispose();
-    }
+    widget.scrollController.removeListener(_onScroll);
     super.dispose();
   }
 
@@ -90,7 +86,7 @@ class _LyricsListState extends State<LyricsList> {
     }
 
     return CustomScrollView(
-      controller: _autoScrollController,
+      controller: widget.scrollController,
       slivers: [
         SliverToBoxAdapter(
           child: Column(
@@ -200,7 +196,7 @@ class _LyricsListState extends State<LyricsList> {
   }
 
   void _scrollToIndex(int index) {
-    if (!_autoScrollController.hasClients) return;
+    if (!widget.scrollController.hasClients) return;
 
     // Estimate height: header ~100 + lines
     // Better: index * 60 (approx line height).
@@ -212,15 +208,15 @@ class _LyricsListState extends State<LyricsList> {
 
     double offset = headerHeight + (index * approxLineHeight);
 
-    double viewportHeight = _autoScrollController.position.viewportDimension;
+    double viewportHeight = widget.scrollController.position.viewportDimension;
     double centeredOffset = offset - viewportHeight / 2;
 
     if (centeredOffset < 0) centeredOffset = 0;
-    if (centeredOffset > _autoScrollController.position.maxScrollExtent) {
-      centeredOffset = _autoScrollController.position.maxScrollExtent;
+    if (centeredOffset > widget.scrollController.position.maxScrollExtent) {
+      centeredOffset = widget.scrollController.position.maxScrollExtent;
     }
 
-    _autoScrollController.animateTo(
+    widget.scrollController.animateTo(
       centeredOffset,
       duration: const Duration(milliseconds: 600),
       curve: Curves.easeInOut,

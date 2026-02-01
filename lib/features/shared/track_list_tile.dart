@@ -262,9 +262,10 @@ class TrackListTile extends StatelessWidget {
                       : 'Failed to remove')),
             );
             // Optional: Request refresh of parent if needed, handled by parent state usually
-            if (success)
+            if (success) {
               onRemove
                   ?.call(); // onRemove usually for library, but can reuse for favorites refresh
+            }
           }
         });
         break;

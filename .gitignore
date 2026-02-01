@@ -25,3 +25,16 @@ flutter_*.jpg
 
 # Sensitive
 lib/core/services/spotify_service.dart
+
+# Build Artifacts
+/dist/
+/installers/
+*.exe
+*.iss
+*.msi
+*.apk
+*.aab
+/windows/flutter/ephemeral/
+/android/.gradle/
+/android/app/build/
+/build/

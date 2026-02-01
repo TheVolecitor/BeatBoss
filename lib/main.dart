@@ -67,7 +67,7 @@ void main() async {
 
   // 4. UI Audio Service
   final audioPlayerService = AudioPlayerService(
-    handler: audioHandler as AppAudioHandler,
+    handler: audioHandler,
     dabApiService: dabApiService,
     historyService: historyService,
     lastFmService: lastFmService,
