@@ -13,6 +13,7 @@ import 'home/home_screen.dart';
 import 'search/search_screen.dart';
 import 'library/library_screen.dart';
 import 'favorites/favorites_screen.dart';
+import 'downloads/downloads_screen.dart';
 import 'settings/settings_screen.dart';
 import 'player/player_bar.dart';
 
@@ -44,6 +45,7 @@ class _AppShellState extends State<AppShell> {
       const SearchScreen(),
       const LibraryScreen(),
       const FavoritesScreen(),
+      const DownloadsScreen(),
       const SettingsScreen(),
     ]);
   }
@@ -54,6 +56,20 @@ class _AppShellState extends State<AppShell> {
       // Older versions accept it gracefully or ignore it
       if (await Permission.notification.isDenied) {
         await Permission.notification.request();
+      }
+
+      // Explicitly request storage permissions as well (user request)
+      var status = await Permission.storage.status;
+      if (!status.isGranted) {
+        await Permission.storage.request();
+      }
+
+      // For Android 13+ audio/images
+      if (await Permission.audio.status.isDenied) {
+        await Permission.audio.request();
+      }
+      if (await Permission.manageExternalStorage.status.isDenied) {
+        await Permission.manageExternalStorage.request();
       }
     }
   }
@@ -174,7 +190,10 @@ class _AppShellState extends State<AppShell> {
         Expanded(
           child: Container(
             color: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
-            child: _screens[_selectedIndex],
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _screens,
+            ),
           ),
         ),
       ],
@@ -182,7 +201,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _buildMobileLayout(bool isDark) {
-    return _screens[_selectedIndex];
+    return IndexedStack(
+      index: _selectedIndex,
+      children: _screens,
+    );
   }
 
   Widget _buildSidebar(bool isDark) {
@@ -246,8 +268,10 @@ class _AppShellState extends State<AppShell> {
 
       _buildNavItem(
           3, Icons.favorite_outline, Icons.favorite, 'Liked Songs', isDark),
+      _buildNavItem(4, Icons.offline_pin_outlined, Icons.offline_pin,
+          'Downloads', isDark),
       _buildNavItem(
-          4, Icons.settings_outlined, Icons.settings, 'Settings', isDark),
+          5, Icons.settings_outlined, Icons.settings, 'Settings', isDark),
 
       const Spacer(),
 
@@ -426,6 +450,8 @@ class _AppShellState extends State<AppShell> {
           BottomNavigationBarItem(
               icon: Icon(Icons.library_music), label: 'Library'),
           BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'Liked'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.offline_pin), label: 'Downloads'),
           BottomNavigationBarItem(
               icon: Icon(Icons.settings), label: 'Settings'),
         ],

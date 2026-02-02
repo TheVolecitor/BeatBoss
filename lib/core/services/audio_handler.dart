@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:media_kit/media_kit.dart'
+    as mk; // Alias to avoid conflicts with just_audio
 import 'package:audio_session/audio_session.dart';
 
 import '../models/models.dart';
@@ -12,7 +14,12 @@ import 'dab_api_service.dart';
 /// The AudioHandler manages the audio player and the playlist.
 /// It exposes the standard AudioService interface to the UI (and system).
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player = AudioPlayer();
+  // Android Equalizer instance - created here to be part of the pipeline
+  // accessible via getter for AudioEffectsService
+  AndroidEqualizer? _androidEqualizer;
+  AndroidEqualizer? get androidEqualizer => _androidEqualizer;
+
+  late final AudioPlayer _player;
   final DownloadManagerService _downloadManager;
   final DabApiService _dabApiService;
 
@@ -28,16 +35,42 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     required DabApiService dabApiService,
   })  : _downloadManager = downloadManager,
         _dabApiService = dabApiService {
+    // Initialize Pipeline
+    if (Platform.isAndroid) {
+      _androidEqualizer = AndroidEqualizer();
+      _player = AudioPlayer(
+        audioPipeline: AudioPipeline(
+          androidAudioEffects: [_androidEqualizer!],
+        ),
+      );
+    } else {
+      _player = AudioPlayer();
+    }
+
     _init();
   }
 
   // Expose explicit state for polling
   Duration get currentPosition => _player.position;
   bool get isPlayerPlaying => _player.playing;
+  int? _audioSessionId;
+  int? get audioSessionId => _audioSessionId;
+
+  // Expose internal player for AudioEffectsService (EQ)
+  AudioPlayer get player => _player;
 
   Future<void> _init() async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
+
+    // Android specfic: get session ID for EQ
+    if (Platform.isAndroid) {
+      // just_audio exposes androidAudioSessionId via player
+      // But we need to wait for player to initialize?
+      // JustAudio doc says androidAudioSessionId is available after setting source?
+      // Let's defer or poll.
+      // Actually `player.androidAudioSessionId` is a property.
+    }
 
     // Broadcast playback state via pipe (Standard SMTC procedure)
     // This transforms just_audio events into audio_service PlaybackState
@@ -327,6 +360,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         );
 
         await _player.setAudioSource(source, initialPosition: startPosition);
+
+        if (Platform.isAndroid) {
+          _audioSessionId = _player.androidAudioSessionId;
+          print("Android Audio Session ID: $_audioSessionId");
+        }
+
         _player.play();
       } else {
         print("Error: Failed to get audio URI for track ${track.title}");

@@ -123,30 +123,41 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
 
     final api = context.read<DabApiService>();
 
-    for (final item in selectedTracks) {
+    // Use chunks to parallelize but not completely overwhelm (batch size 5)
+    // Actually user said "without api rate limit" so let's go faster, e.g. batch 10
+    final int batchSize = 10;
+
+    for (var i = 0; i < selectedTracks.length; i += batchSize) {
       if (!mounted) break;
 
-      setState(() => _currentImportingTitle = item.title);
+      final end = (i + batchSize < selectedTracks.length)
+          ? i + batchSize
+          : selectedTracks.length;
+      final batch = selectedTracks.sublist(i, end);
 
-      try {
-        // Clean title for better search
-        String query = '${item.title} ${item.subtitle}'
-            .replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '')
-            .trim();
+      await Future.wait(batch.map((item) async {
+        try {
+          // Clean title for better search
+          String query = '${item.title} ${item.subtitle}'
+              .replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '')
+              .trim();
 
-        final results = await api.search(query, limit: 1);
-
-        if (results != null && results.tracks.isNotEmpty) {
-          final track = results.tracks.first;
-          await api.addTrackToLibrary(libraryId, track);
-          setState(() => _importedCount++);
+          final results = await api.search(query, limit: 1);
+          if (results != null && results.tracks.isNotEmpty) {
+            final track = results.tracks.first;
+            await api.addTrackToLibrary(libraryId, track);
+            if (mounted) setState(() => _importedCount++);
+          }
+        } catch (e) {
+          print('Import error for ${item.title}: $e');
         }
-      } catch (e) {
-        print('Import error for ${item.title}: $e');
-      }
+      }));
 
-      // Small delay to prevent rate limits if necessary
-      await Future.delayed(const Duration(milliseconds: 50));
+      if (mounted) {
+        setState(() {
+          _currentImportingTitle = "Batch ${i ~/ batchSize + 1} done...";
+        });
+      }
     }
 
     if (mounted) {

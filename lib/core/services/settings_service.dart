@@ -11,7 +11,7 @@ import '../models/models.dart';
 class SettingsService extends ChangeNotifier {
   static const String _boxName = 'beatboss_settings';
   late Box _box;
-  
+
   bool _initialized = false;
   bool get isInitialized => _initialized;
 
@@ -20,7 +20,10 @@ class SettingsService extends ChangeNotifier {
   static const String _keyDownloadLocation = 'download_location';
   static const String _keyPlayHistory = 'play_history';
   static const String _keyUser = 'user';
+
   static const String _keyDownloadedTracks = 'downloaded_tracks';
+  // New: Store Track metadata (ID -> JSON)
+  static const String _keyDownloadedTracksMeta = 'downloaded_tracks_meta';
 
   Future<void> init() async {
     _box = await Hive.openBox(_boxName);
@@ -30,9 +33,9 @@ class SettingsService extends ChangeNotifier {
 
   // ========== Theme ==========
   bool get isDarkMode => (_box.get(_keyTheme, defaultValue: 'dark')) == 'dark';
-  
+
   String get theme => _box.get(_keyTheme, defaultValue: 'dark');
-  
+
   Future<void> setTheme(String theme) async {
     await _box.put(_keyTheme, theme);
     notifyListeners();
@@ -48,7 +51,7 @@ class SettingsService extends ChangeNotifier {
     if (saved != null && saved.isNotEmpty) {
       return saved;
     }
-    
+
     // Default: Music folder
     if (Platform.isAndroid) {
       return '/storage/emulated/0/Music/BeatBoss';
@@ -59,7 +62,7 @@ class SettingsService extends ChangeNotifier {
       final home = Platform.environment['HOME'] ?? '';
       return '$home/Music/BeatBoss';
     }
-    
+
     final appDir = await getApplicationDocumentsDirectory();
     return '${appDir.path}/BeatBoss';
   }
@@ -133,17 +136,63 @@ class SettingsService extends ChangeNotifier {
     }
   }
 
-  Future<void> registerDownload(String trackId, String filePath) async {
+  Future<void> registerDownload(String trackId, String filePath,
+      {Track? track}) async {
     final downloads = getDownloadedTracks();
     downloads[trackId] = filePath;
     await _box.put(_keyDownloadedTracks, jsonEncode(downloads));
+
+    if (track != null) {
+      final meta = getDownloadedTracksMeta();
+      meta[trackId] = track.toJson();
+      await _box.put(_keyDownloadedTracksMeta, jsonEncode(meta));
+    }
     notifyListeners();
+  }
+
+  // Get metadata map
+  Map<String, dynamic> getDownloadedTracksMeta() {
+    final data = _box.get(_keyDownloadedTracksMeta, defaultValue: '{}');
+    try {
+      return Map<String, dynamic>.from(jsonDecode(data));
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // Get list of downloaded tracks
+  List<Track> getDownloadedTracksList() {
+    final meta = getDownloadedTracksMeta();
+    final fileMap = getDownloadedTracks();
+
+    // Filter out tracks that definitely don't have files (orphaned meta),
+    // or keep them if you trust sync. Best to intersect.
+
+    List<Track> tracks = [];
+    meta.forEach((key, value) {
+      if (fileMap.containsKey(key)) {
+        try {
+          tracks.add(Track.fromJson(value));
+        } catch (e) {
+          print("Error parsing track meta for $key: $e");
+        }
+      }
+    });
+
+    // Sort by name or date? Unordered for now.
+    return tracks;
   }
 
   Future<void> unregisterDownload(String trackId) async {
     final downloads = getDownloadedTracks();
     downloads.remove(trackId);
     await _box.put(_keyDownloadedTracks, jsonEncode(downloads));
+
+    // Remove meta
+    final meta = getDownloadedTracksMeta();
+    meta.remove(trackId);
+    await _box.put(_keyDownloadedTracksMeta, jsonEncode(meta));
+
     notifyListeners();
   }
 

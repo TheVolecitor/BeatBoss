@@ -64,13 +64,8 @@ class HistoryService with ChangeNotifier {
         // path_provider getDownloadsDirectory works on Windows
         directory = await getDownloadsDirectory();
       } else if (Platform.isAndroid) {
-        // On Android, generic download folder is problematic for persistent app storage
-        // if we want it to survive but user asked for "default downloads folder".
-        // Usually /storage/emulated/0/Download
-        directory = Directory('/storage/emulated/0/Download');
-        if (!directory.existsSync()) {
-          directory = await getExternalStorageDirectory();
-        }
+        // Use internal app storage for history to ensure it works without permissions
+        directory = await getApplicationDocumentsDirectory();
       } else {
         directory = await getApplicationDocumentsDirectory();
       }

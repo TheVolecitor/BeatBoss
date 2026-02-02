@@ -24,6 +24,7 @@ dependencies:
   just_audio_media_kit: ^2.0.0
   media_kit_libs_windows_video: ^1.0.0
 
+
   just_audio_background: ^0.0.1-beta.17
   audio_service: ^0.18.18
   audio_service_win: ^0.0.2
@@ -50,6 +51,8 @@ dependencies:
   permission_handler: ^11.3.0
   html: ^0.15.4
   win32: ^5.0.0
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
 
 dev_dependencies:
   flutter_test:

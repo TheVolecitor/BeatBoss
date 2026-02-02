@@ -25,8 +25,11 @@ class TrackListTile extends StatelessWidget {
     required this.index,
     this.libraryId,
     this.onRemove,
+    this.removeLabel = 'Remove from Library',
     this.isFavorite = false,
   });
+
+  final String removeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -115,10 +118,10 @@ class TrackListTile extends StatelessWidget {
                     value: isFavorite ? 'unlike' : 'like',
                     child: Text(isFavorite ? 'Unlike (Remove)' : 'Like')),
                 if (onRemove != null)
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'remove',
-                    child: Text('Remove from Library',
-                        style: TextStyle(color: Colors.red)),
+                    child: Text(removeLabel,
+                        style: const TextStyle(color: Colors.red)),
                   ),
               ],
             ),
@@ -204,10 +207,8 @@ class TrackListTile extends StatelessWidget {
           final url = await api.getStreamUrl(track.id);
           if (url != null && context.mounted) {
             downloadManager.downloadTrack(
-              trackId: track.id,
+              track: track,
               streamUrl: url,
-              title: track.title,
-              artist: track.artist,
             );
           } else if (context.mounted) {
             scaffoldMessenger.showSnackBar(

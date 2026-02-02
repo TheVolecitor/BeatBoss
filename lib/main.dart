@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'; // For kIsWeb
+import 'dart:io'; // For Platform
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -17,6 +19,7 @@ import 'core/services/youtube_service.dart';
 import 'core/services/spotify_service.dart';
 import 'core/services/last_fm_service.dart';
 import 'core/services/discord_rpc_service.dart';
+
 import 'features/app_shell.dart';
 
 import 'core/services/history_service.dart';
@@ -24,8 +27,10 @@ import 'core/services/history_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize JustAudioMediaKit
-  JustAudioMediaKit.ensureInitialized();
+  // Initialize JustAudioMediaKit (Desktop only)
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+    JustAudioMediaKit.ensureInitialized();
+  }
 
   // Initialize Hive for local storage
   await Hive.initFlutter();
@@ -59,8 +64,13 @@ void main() async {
 
   final youtubeService = YouTubeService();
   final spotifyService = SpotifyService();
+
   final lastFmService = LastFmService(); // New
-  await lastFmService.init();
+  try {
+    await lastFmService.init();
+  } catch (e) {
+    print('Error initializing LastFM: $e');
+  }
 
   final discordRpcService = DiscordRpcService();
   discordRpcService.initialize();
@@ -78,8 +88,8 @@ void main() async {
   if (settingsService.isLoggedIn) {
     final token = settingsService.authToken;
     if (token != null) {
-      print('Attempting auto-login...');
-      await dabApiService.autoLogin(token);
+      // Fire and forget - UI updates via listeners
+      dabApiService.autoLogin(token);
     }
   }
 
@@ -96,7 +106,7 @@ void main() async {
         ChangeNotifierProvider.value(value: audioPlayerService),
         ChangeNotifierProvider.value(value: downloadManager),
         ChangeNotifierProvider.value(value: historyService),
-        Provider.value(value: dabApiService),
+        ChangeNotifierProvider.value(value: dabApiService),
         Provider.value(value: youtubeService),
         Provider.value(value: spotifyService),
         ChangeNotifierProvider.value(value: lastFmService),

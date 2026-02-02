@@ -8,7 +8,9 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/dab_api_service.dart';
 import '../../core/models/models.dart';
 import '../../core/services/history_service.dart';
+import '../../core/services/last_fm_service.dart';
 import '../import/playlist_import_dialog.dart';
+import '../downloads/downloads_screen.dart';
 
 /// Home Screen - displays play history and welcome message, or Login if not authenticated
 class HomeScreen extends StatefulWidget {
@@ -20,7 +22,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with AutomaticKeepAliveClientMixin {
   // Auth State
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -29,8 +32,96 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = false;
   bool _showPassword = false;
 
+  // Recommendations
+  List<Track> _recommendations = [];
+  bool _loadingRecommendations = false;
+  bool _hasInitialFetch = false;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen for auth changes to trigger fetch
+    final lastFm = context.read<LastFmService>();
+    lastFm.addListener(_onAuthChanged);
+
+    // Initial fetch check
+    if (!_hasInitialFetch) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchRecommendations();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    context.read<LastFmService>().removeListener(_onAuthChanged);
+    _emailController.dispose();
+    _passwordController.dispose();
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    final lastFm = context.read<LastFmService>();
+    // If authenticated and no recs, fetch them
+    if (lastFm.isAuthenticated &&
+        _recommendations.isEmpty &&
+        !_loadingRecommendations) {
+      _fetchRecommendations();
+    }
+  }
+
+  Future<void> _fetchRecommendations() async {
+    final lastFm = context.read<LastFmService>();
+    final dabApi = context.read<DabApiService>();
+
+    if (!lastFm.isAuthenticated) {
+      if (mounted) setState(() => _recommendations = []);
+      return;
+    }
+
+    if (mounted) setState(() => _loadingRecommendations = true);
+
+    try {
+      final rawRecs = await lastFm.getRecommendations();
+
+      // Parallelize searches
+      // Create a list of futures to fetch all simultaneously as requested
+      final searchFutures = rawRecs.take(10).map((rec) async {
+        final query = "${rec['name']} ${rec['artist']}";
+        try {
+          final results = await dabApi.search(query, limit: 1);
+          if (results != null && results.tracks.isNotEmpty) {
+            return results.tracks.first;
+          }
+        } catch (e) {
+          print('Rec search error: $e');
+        }
+        return null;
+      });
+
+      final results = await Future.wait(searchFutures);
+      final resolvedTracks = results.whereType<Track>().toList();
+
+      if (mounted) {
+        setState(() {
+          _recommendations = resolvedTracks;
+          _loadingRecommendations = false;
+          _hasInitialFetch = true;
+        });
+      }
+    } catch (e) {
+      print('Error fetching recommendations: $e');
+      if (mounted) setState(() => _loadingRecommendations = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     final settings = context.watch<SettingsService>();
     final api = context.watch<DabApiService>(); // Watch for auth changes
     final isDark = settings.isDarkMode;
@@ -39,11 +130,97 @@ class _HomeScreenState extends State<HomeScreen> {
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     if (!api.isLoggedIn) {
-      return Center(
-        child: SingleChildScrollView(
-          child: _buildLoginCard(isDark, api, settings, isMobile),
-        ),
-      );
+      // Check if we have saved user data but failed to login (likely offline)
+      // Or if no user data, show downloads as fallback
+      final savedUser = settings.getUser();
+
+      if (savedUser != null) {
+        // Check if we are currently trying to auto-login
+        if (api.isAutoLoggingIn) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: AppTheme.primaryGreen,
+            ),
+          );
+        }
+
+        // Saved credentials exist - we are likely offline
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.wifi_off,
+                  size: 64, color: isDark ? Colors.white54 : Colors.black54),
+              const SizedBox(height: 20),
+              Text(
+                'You are offline',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Welcome back, ${savedUser.username}',
+                style:
+                    TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+              ),
+              const SizedBox(height: 30),
+
+              // Actions
+              Wrap(
+                spacing: 20,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Trigger auto-login retry
+                      // We need to access token again or just call init on API?
+                      // API autoLogin needs token.
+                      if (savedUser.token != null) {
+                        api.autoLogin(savedUser.token!);
+                      }
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry Connection'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      // Navigate to downloads (Index 6) - Assuming added or using onNavigate
+                      // If onNavigate maps to tabs.
+                      // OR we just push DownloadsScreen?
+                      // The prompt says "Go to downloads".
+                      // If we are in AppShell, we might not have a tab for downloads in the bottom bar...
+                      // Wait, we added Downloads to AppShell at index 4?
+                      // Let's check AppShell indices.
+                      // Home=0, Search=1, Library=2, Favorites=3, Downloads=4, Settings=5
+                      widget.onNavigate?.call(4);
+                    },
+                    icon: const Icon(Icons.offline_pin),
+                    label: const Text('Go to Downloads'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 40),
+              TextButton(
+                onPressed: () async {
+                  // Allow signing out to verify credentials again if stuck
+                  await settings.clearUser();
+                  api.clearUser();
+                  // Will rebuild and show login card
+                },
+                child:
+                    const Text('Sign Out', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // No saved user - show Downloads screen directly as fallback
+        // But wrapped to look okay
+        return const DownloadsScreen();
+      }
     }
 
     return _buildHomeContent(isDark, settings);
@@ -82,7 +259,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               Text(
                 username,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppTheme.primaryGreen,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -93,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
           const SizedBox(height: 15),
 
-          // Play history section
+          // Play history section (Moved to Top)
           if (playHistory.isNotEmpty) ...[
             Text(
               'Recently Played',
@@ -113,10 +290,92 @@ class _HomeScreenState extends State<HomeScreen> {
                   return _RecentTrackCard(
                     track: playHistory[index],
                     isDark: isDark,
+                    width: 140,
                   );
                 },
               ),
             ),
+            const SizedBox(height: 30),
+          ],
+
+          // Last.FM Connect Prompt (Moved below Recent Played)
+          if (!context.watch<LastFmService>().isAuthenticated) ...[
+            _buildLastFmConnectCard(context, isDark),
+            const SizedBox(height: 30),
+          ],
+
+          // Recommendations Section (Always show if authenticated)
+          if (context.watch<LastFmService>().isAuthenticated) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Recommended for You',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  tooltip: 'Refresh Recommendations',
+                  onPressed:
+                      _loadingRecommendations ? null : _fetchRecommendations,
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+            if (_loadingRecommendations)
+              SizedBox(
+                height: 220,
+                child: Center(
+                  child:
+                      CircularProgressIndicator(color: AppTheme.primaryGreen),
+                ),
+              )
+            else if (_recommendations.isEmpty)
+              SizedBox(
+                height: 100,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'No recommendations found yet.',
+                        style: TextStyle(
+                            color: isDark ? Colors.white54 : Colors.black54),
+                      ),
+                      TextButton(
+                        onPressed: _fetchRecommendations,
+                        child: const Text('Try Again'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent:
+                      150, // Smaller tiles, closer to "Recently Played" size
+                  childAspectRatio:
+                      0.65, // More vertical space to avoid overflow
+                  crossAxisSpacing: 15,
+                  mainAxisSpacing: 15,
+                ),
+                itemCount: _recommendations.length,
+                itemBuilder: (context, index) {
+                  return _RecentTrackCard(
+                    track: _recommendations[index],
+                    isDark: isDark,
+                    // width is null, so it fills grid cell
+                  );
+                },
+              ),
             const SizedBox(height: 30),
           ],
 
@@ -331,7 +590,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   TextSpan(
                     text: _isSignup ? 'Sign In' : 'Sign Up',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppTheme.primaryGreen,
                       fontWeight: FontWeight.bold,
                     ),
@@ -406,13 +665,78 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  Widget _buildLastFmConnectCard(BuildContext context, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.black12,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFB90000).withOpacity(0.1), // Subtle red bg
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.music_note, color: Color(0xFFB90000)),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connect Last.fm',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Get personalized recommendations.',
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () {
+              // Navigate to Settings (Index 5)
+              widget.onNavigate?.call(5);
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: isDark ? Colors.white : Colors.black,
+              side: BorderSide(color: isDark ? Colors.white24 : Colors.black26),
+            ),
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _RecentTrackCard extends StatelessWidget {
   final Track track;
   final bool isDark;
+  final double? width;
 
-  const _RecentTrackCard({required this.track, required this.isDark});
+  const _RecentTrackCard({
+    required this.track,
+    required this.isDark,
+    this.width,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -421,99 +745,104 @@ class _RecentTrackCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => player.playSingleTrack(track),
       child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 15),
+        width: width,
+        margin: const EdgeInsets.only(right: 15, bottom: 15),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Album art
-            Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: track.displayImage,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) =>
-                          Container(color: AppTheme.darkCard),
-                      errorWidget: (_, __, ___) => Container(
-                        color: AppTheme.darkCard,
-                        child: const Icon(Icons.music_note,
-                            size: 40, color: Colors.white30),
-                      ),
+            // Album art - Scaled to width (Aspect Ratio 1:1)
+            AspectRatio(
+              aspectRatio: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                  Positioned(
-                    top: 5,
-                    right: 5,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: PopupMenuButton<String>(
-                        icon: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.more_vert,
-                              size: 16, color: Colors.white),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: track.displayImage,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        placeholder: (_, __) =>
+                            Container(color: AppTheme.darkCard),
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppTheme.darkCard,
+                          child: const Icon(Icons.music_note,
+                              size: 40, color: Colors.white30),
                         ),
-                        onSelected: (value) {
-                          final player = context.read<AudioPlayerService>();
-                          switch (value) {
-                            case 'queue':
-                              player.addToQueue(track);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Added to Queue')),
-                              );
-                              break;
-                            case 'play_next':
-                              player.playNext(track);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Will play next')),
-                              );
-                              break;
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: 'queue',
-                            child: Row(
-                              children: [
-                                Icon(Icons.queue_music, size: 20),
-                                SizedBox(width: 10),
-                                Text('Add to Queue'),
-                              ],
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'play_next',
-                            child: Row(
-                              children: [
-                                Icon(Icons.playlist_play, size: 20),
-                                SizedBox(width: 10),
-                                Text('Play Next'),
-                              ],
-                            ),
-                          ),
-                        ],
                       ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      top: 5,
+                      right: 5,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: PopupMenuButton<String>(
+                          icon: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.more_vert,
+                                size: 16, color: Colors.white),
+                          ),
+                          onSelected: (value) {
+                            final player = context.read<AudioPlayerService>();
+                            switch (value) {
+                              case 'queue':
+                                player.addToQueue(track);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Added to Queue')),
+                                );
+                                break;
+                              case 'play_next':
+                                player.playNext(track);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Will play next')),
+                                );
+                                break;
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'queue',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.queue_music, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Add to Queue'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'play_next',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.playlist_play, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Play Next'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'settings_service.dart';
+import '../models/models.dart';
 
 /// Download Manager Service - mirrors Python DownloadManager class
 class DownloadManagerService extends ChangeNotifier {
@@ -50,13 +51,14 @@ class DownloadManagerService extends ChangeNotifier {
 
   /// Download a track
   Future<bool> downloadTrack({
-    required String trackId,
+    required Track track,
     required String streamUrl,
-    required String title,
-    required String artist,
     void Function(double progress)? onProgress,
     void Function(bool success, String? error)? onComplete,
   }) async {
+    final trackId = track.id;
+    final title = track.title;
+    final artist = track.artist;
     if (_activeDownloads.containsKey(trackId)) {
       print('[Download] Track $trackId already downloading');
       return false;
@@ -95,7 +97,14 @@ class DownloadManagerService extends ChangeNotifier {
       }
 
       final safeName = _sanitizeFilename('$artist - $title');
-      final filePath = '$downloadDir${Platform.pathSeparator}$safeName.m4a';
+
+      // Format selection: FLAC for Hi-Res, M4A for others
+      // Note: This assumes the streamUrl actually provides that format relative to the metadata.
+      final isHiRes = track.audioQuality?.isHiRes ?? false;
+      final extension = isHiRes ? 'flac' : 'm4a';
+
+      final filePath =
+          '$downloadDir${Platform.pathSeparator}$safeName.$extension';
 
       print('[Download] Starting: $filePath');
 
@@ -112,8 +121,8 @@ class DownloadManagerService extends ChangeNotifier {
         },
       );
 
-      // Register download in settings
-      await _settingsService.registerDownload(trackId, filePath);
+      // Register download in settings (with metadata)
+      await _settingsService.registerDownload(trackId, filePath, track: track);
 
       _activeDownloads.remove(trackId);
       notifyListeners();

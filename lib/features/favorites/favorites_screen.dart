@@ -6,7 +6,9 @@ import '../../core/services/dab_api_service.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/models/models.dart';
+import '../../core/models/models.dart';
 import '../shared/track_list_tile.dart';
+import '../shared/batch_download_dialog.dart';
 
 /// Favorites Screen - display liked songs
 class FavoritesScreen extends StatefulWidget {
@@ -92,6 +94,20 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   iconSize: 50,
                   color: AppTheme.primaryGreen,
                   onPressed: () => player.playAll(_favorites),
+                ),
+              if (_favorites.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.download_rounded),
+                  iconSize: 28, // Slightly smaller than play
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  tooltip: 'Download All',
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) =>
+                          BatchDownloadDialog(tracks: _favorites),
+                    );
+                  },
                 ),
               IconButton(
                 icon: const Icon(Icons.refresh),

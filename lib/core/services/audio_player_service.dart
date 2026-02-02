@@ -53,6 +53,9 @@ class AudioPlayerService with ChangeNotifier {
   int get currentLyricIndex => _currentLyricIndex;
   bool get isFetchingLyrics => _isFetchingLyrics;
 
+  // Expose Session ID for EQ (Android)
+  int? get audioSessionId => _handler.audioSessionId;
+
   int get sliderValue {
     if (_duration.inMilliseconds > 0) {
       final val = (_position.inMilliseconds * 1000 ~/ _duration.inMilliseconds);
@@ -91,6 +94,16 @@ class AudioPlayerService with ChangeNotifier {
   }
 
   void _init() {
+    // Init Audio Effects with the underlying player
+    _lastFmService.init(); // Last.fm init
+
+    // Pass the player from handlers to effects service
+    // We access AudioEffectsService via context usually, but here strict injection is better.
+    // However, AudioPlayerService doesn't have AudioEffectsService injected in constructor.
+    // We should probably rely on main.dart to call init(), OR add it to constructor.
+    // Let's assume we need to update constructor.
+    // For now, let's keep it simple: Main.dart calls audioEffectsService.init(audioHandler.player)
+
     // Always start ticker for robust polling on Windows
     _startTicker();
 

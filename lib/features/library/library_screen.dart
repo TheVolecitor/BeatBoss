@@ -7,6 +7,7 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/models/models.dart';
 import '../shared/track_list_tile.dart';
+import '../shared/batch_download_dialog.dart';
 
 /// Library Screen - display user's music libraries (collections)
 class LibraryScreen extends StatefulWidget {
@@ -262,6 +263,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   iconSize: 50,
                   color: AppTheme.primaryGreen,
                   onPressed: () => player.playAll(_libraryTracks!),
+                ),
+              if (_libraryTracks != null && _libraryTracks!.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.download_rounded),
+                  iconSize: 28,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  tooltip: 'Download All',
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) =>
+                          BatchDownloadDialog(tracks: _libraryTracks!),
+                    );
+                  },
                 ),
             ],
           ),

@@ -10,7 +10,11 @@ class LastFmService extends ChangeNotifier {
   static const String _baseUrl =
       'https://beatboss-lastfm.thevolecitor.workers.dev/';
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
   String? _sessionKey;
   String? _username;
 
@@ -112,5 +116,45 @@ class LastFmService extends ChangeNotifier {
     } catch (e) {
       print('Last.fm Scrobble Error: $e');
     }
+  }
+
+  Future<List<Map<String, String>>> getRecommendations() async {
+    if (_username == null) return [];
+
+    // Direct request to Last.fm player API as requested
+    final url =
+        'https://www.last.fm/player/station/user/$_username/recommended';
+
+    try {
+      print('Fetching recommendations from: $url');
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // The structure of this endpoint usually returns { playlist: [ { name, artists: [ { name } ] } ] }
+        // or similar. Let's inspect/adapt based on standard Last.fm player responses.
+        // Usually: { playlist: [ { name: "Title", artists: [ { name: "Artist" } ] } ] }
+
+        if (data['playlist'] != null) {
+          final tracks = data['playlist'] as List;
+          return tracks.map<Map<String, String>>((t) {
+            final name = t['name'].toString();
+            String artist = 'Unknown';
+            if (t['artists'] != null && (t['artists'] as List).isNotEmpty) {
+              artist = t['artists'][0]['name'].toString();
+            }
+            return {
+              'name': name,
+              'artist': artist,
+            };
+          }).toList();
+        }
+      } else {
+        print('Last.fm Recommendations Error: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Last.fm Recommendations Error: $e');
+    }
+    return [];
   }
 }

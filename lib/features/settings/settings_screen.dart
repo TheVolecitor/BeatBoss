@@ -7,6 +7,8 @@ import '../../core/services/download_manager_service.dart';
 import '../../core/services/dab_api_service.dart';
 import '../../core/services/last_fm_service.dart';
 
+import 'package:flutter/foundation.dart'; // For platform check, though we might use service.isSupported
+
 /// Settings Screen - theme toggle, download management, cache clearing
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -90,17 +92,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.folder_open),
                 title: const Text('Download Location'),
-                subtitle: Text(_downloadLocation ?? 'Loading...'),
+                subtitle: FutureBuilder<String>(
+                  future: settings.getDownloadLocation(),
+                  builder: (context, snapshot) =>
+                      Text(snapshot.data ?? 'Loading...'),
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.download_done),
                 title: const Text('Downloaded Tracks'),
-                subtitle: Text('$_downloadedCount tracks'),
+                subtitle: Text('${settings.downloadedCount} tracks'),
               ),
               ListTile(
                 leading: const Icon(Icons.storage),
                 title: const Text('Storage Used'),
-                subtitle: Text(_formatBytes(_storageSize ?? 0)),
+                subtitle: FutureBuilder<int>(
+                  future: settings.getStorageSize(),
+                  builder: (context, snapshot) =>
+                      Text(_formatBytes(snapshot.data ?? 0)),
+                ),
               ),
               if (downloadManager.hasActiveDownloads)
                 ListTile(

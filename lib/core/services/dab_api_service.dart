@@ -1,8 +1,12 @@
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'dart:io';
 import '../models/models.dart';
 
+import 'package:flutter/foundation.dart';
+
 /// DAB API Service - mirrors Python DabAPI class exactly
-class DabApiService {
+class DabApiService extends ChangeNotifier {
   static const String _baseUrl = 'https://dabmusic.xyz/api';
 
   final Dio _dio;
@@ -49,12 +53,14 @@ class DabApiService {
       // Fallback for Bearer if mixed usage (rare for this API)
       // _dio.options.headers['Authorization'] = 'Bearer ${user.token}';
     }
+    notifyListeners();
   }
 
   void clearUser() {
     _user = null;
     _dio.options.headers.remove('Cookie');
     _dio.options.headers.remove('Authorization');
+    notifyListeners();
   }
 
   // ========== SEARCH ==========
@@ -175,7 +181,12 @@ class DabApiService {
     return null;
   }
 
+  bool _isAutoLoggingIn = false;
+  bool get isAutoLoggingIn => _isAutoLoggingIn;
+
   Future<User?> autoLogin(String token) async {
+    _isAutoLoggingIn = true;
+    notifyListeners();
     try {
       _dio.options.headers['Authorization'] = 'Bearer $token'; // Fallback
       _dio.options.headers['Cookie'] = token; // Primary
@@ -196,13 +207,16 @@ class DabApiService {
 
         userMap['token'] = token;
         final user = User.fromJson(userMap);
-        _user = user;
+        setUser(user);
         return user;
       }
     } catch (e) {
       print('[DAB API] Auto-login error: $e');
       _dio.options.headers.remove('Authorization');
       _dio.options.headers.remove('Cookie');
+    } finally {
+      _isAutoLoggingIn = false;
+      notifyListeners();
     }
     return null;
   }
