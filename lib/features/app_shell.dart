@@ -75,6 +75,18 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onNavTap(int index) {
+    // Restrict access to Search, Library, and Favorites if not logged in
+    final api = context.read<DabApiService>();
+    if (!api.isLoggedIn && (index == 1 || index == 2 || index == 3)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in to access this feature'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _selectedIndex = index;
     });

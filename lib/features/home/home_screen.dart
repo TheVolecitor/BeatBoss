@@ -10,7 +10,6 @@ import '../../core/models/models.dart';
 import '../../core/services/history_service.dart';
 import '../../core/services/last_fm_service.dart';
 import '../import/playlist_import_dialog.dart';
-import '../downloads/downloads_screen.dart';
 
 /// Home Screen - displays play history and welcome message, or Login if not authenticated
 class HomeScreen extends StatefulWidget {
@@ -217,9 +216,12 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         );
       } else {
-        // No saved user - show Downloads screen directly as fallback
-        // But wrapped to look okay
-        return const DownloadsScreen();
+        // No saved user - Show Login Screen
+        return Center(
+          child: SingleChildScrollView(
+            child: _buildLoginCard(isDark, api, settings, isMobile),
+          ),
+        );
       }
     }
 
