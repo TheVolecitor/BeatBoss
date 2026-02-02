@@ -152,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Version'),
-                subtitle: Text('1.5.0 (Flutter)'),
+                subtitle: Text('1.7.0 (Flutter)'),
               ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
