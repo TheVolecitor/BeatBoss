@@ -6,7 +6,7 @@ import '../../core/services/dab_api_service.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/models/models.dart';
-import '../../core/models/models.dart';
+
 import '../shared/track_list_tile.dart';
 import '../shared/batch_download_dialog.dart';
 
@@ -26,12 +26,31 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   void initState() {
     super.initState();
     _loadFavorites();
+    // Listen for auth changes
+    final api = context.read<DabApiService>();
+    api.addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    context.read<DabApiService>().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    final api = context.read<DabApiService>();
+    if (api.isLoggedIn && _favorites.isEmpty) {
+      _loadFavorites();
+    } else if (!api.isLoggedIn) {
+      if (mounted) setState(() => _favorites = []);
+    }
   }
 
   Future<void> _loadFavorites() async {
-    setState(() => _isLoading = true);
-
     final api = context.read<DabApiService>();
+    if (!api.isLoggedIn) return;
+
+    setState(() => _isLoading = true);
     final favs = await api.getFavorites();
 
     if (!mounted) return;
@@ -45,8 +64,16 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final player = context.read<AudioPlayerService>();
-    final api = context.read<DabApiService>();
+    // Use watch to rebuild on auth changes
+    final api = context.watch<DabApiService>();
     final isDark = settings.isDarkMode;
+
+    // Show loading if auto-logging in
+    if (api.isAutoLoggingIn) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryGreen),
+      );
+    }
 
     // Show login prompt if not logged in
     if (!api.isLoggedIn) {
@@ -66,6 +93,25 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 color: isDark ? Colors.white54 : Colors.black45,
                 fontSize: 18,
               ),
+            ),
+            const SizedBox(height: 20),
+            // Retry Button
+            OutlinedButton.icon(
+              onPressed: () {
+                final api = context.read<DabApiService>();
+                final user = context.read<SettingsService>().getUser();
+                if (user != null && user.token != null) {
+                  api.autoLogin(user.token!);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'No saved credentials found. Please go to Home to sign in.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh / Retry'),
             ),
           ],
         ),

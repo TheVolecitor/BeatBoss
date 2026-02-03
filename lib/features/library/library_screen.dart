@@ -27,12 +27,36 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _loadLibraries();
+    // Listen for auth changes to reload data
+    final api = context.read<DabApiService>();
+    api.addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    context.read<DabApiService>().removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    final api = context.read<DabApiService>();
+    if (api.isLoggedIn && _libraries.isEmpty) {
+      _loadLibraries();
+    } else if (!api.isLoggedIn) {
+      if (mounted) {
+        setState(() {
+          _libraries = [];
+          _selectedLibrary = null; // Reset selection on logout
+        });
+      }
+    }
   }
 
   Future<void> _loadLibraries() async {
-    setState(() => _isLoading = true);
-
     final api = context.read<DabApiService>();
+    if (!api.isLoggedIn) return;
+
+    setState(() => _isLoading = true);
     final libs = await api.getLibraries();
 
     if (!mounted) return;
@@ -69,7 +93,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final isDark = settings.isDarkMode;
-    final api = context.read<DabApiService>();
+    // Use watch to rebuild on auth changes
+    final api = context.watch<DabApiService>();
+
+    // Show loading if auto-logging in
+    if (api.isAutoLoggingIn) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryGreen),
+      );
+    }
 
     // Show login prompt if not logged in
     if (!api.isLoggedIn) {
@@ -103,11 +135,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          ElevatedButton(
+          // Refresh Button (Manual Sync)
+          OutlinedButton.icon(
             onPressed: () {
-              // TODO: Show login dialog
+              // Trigger checks
+              final api = context.read<DabApiService>();
+              final user = context.read<SettingsService>().getUser();
+              if (user != null && user.token != null) {
+                api.autoLogin(user.token!);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text(
+                          'No saved credentials found. Please go to Home to sign in.')),
+                );
+              }
             },
-            child: const Text('Sign In'),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh / Retry'),
           ),
         ],
       ),
