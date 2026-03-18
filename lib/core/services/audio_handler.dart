@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart'
 import 'package:audio_session/audio_session.dart';
 
 import '../models/models.dart';
+
 import 'download_manager_service.dart';
 import 'dab_api_service.dart';
 
@@ -71,6 +72,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       // Let's defer or poll.
       // Actually `player.androidAudioSessionId` is a property.
     }
+
+    // Cleanup old temp files from previous sessions
+    _downloadManager.cleanupTemporaryFiles();
 
     // Broadcast playback state via pipe (Standard SMTC procedure)
     // This transforms just_audio events into audio_service PlaybackState
@@ -176,36 +180,23 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       _player.seek(Duration.zero);
       _player.play();
     } else {
-      // Consume Queue: Remove the track that just finished
-      if (_internalQueue.isNotEmpty &&
-          _currentIndex >= 0 &&
-          _currentIndex < _internalQueue.length) {
-        final removed = _internalQueue.removeAt(_currentIndex);
+      // Standard Playlist Behavior: Advance to next track, don't remove.
+      if (_currentIndex < _internalQueue.length - 1) {
+        _currentIndex++;
         print(
-            "DEBUG: Removed track '${removed.title}' from queue. New Len: ${_internalQueue.length}");
-
-        // Update AudioService queue
-        queue.add(_internalQueue.map(_toMediaItem).toList());
-
-        // If queue is empty after removal, stop
-        if (_internalQueue.isEmpty) {
-          print("DEBUG: Queue empty. Stopping.");
-          stop();
-          _currentIndex = -1;
-        } else {
-          // If queue still has items, play the item that is now at _currentIndex
-          if (_currentIndex >= _internalQueue.length) {
-            print("DEBUG: Index $_currentIndex >= Length. Resetting to 0.");
-            _currentIndex = 0;
-          }
-
-          print(
-              "DEBUG: Playing next item at index $_currentIndex: ${_internalQueue[_currentIndex].title}");
-          _playQueueItem(_currentIndex);
-        }
+            "DEBUG: Advancing to next track index $_currentIndex: ${_internalQueue[_currentIndex].title}");
+        _playQueueItem(_currentIndex);
       } else {
-        print("DEBUG: Queue empty or index invalid. Stopping.");
-        stop();
+        // End of queue
+        if (_player.loopMode == LoopMode.all) {
+          print("DEBUG: LoopMode ALL. Looping back to start.");
+          _currentIndex = 0;
+          _playQueueItem(0);
+        } else {
+          print("DEBUG: End of queue. Stopping.");
+          stop();
+          _player.seek(Duration.zero); // Reset to start of track
+        }
       }
     }
   }
@@ -332,12 +323,46 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       Uri? audioUri;
 
       if (isDownloaded && localPath != null && File(localPath).existsSync()) {
-        audioUri = Uri.file(localPath);
+        File fileToPlay = File(localPath);
+
+        // Check if FLAC and sanitize for playback
+        if (localPath.toLowerCase().endsWith('.flac')) {
+          try {
+            final dir = fileToPlay.parent;
+
+            // CLEANUP: Aggressively try to delete ALL old playback_safe files
+            // This acts as a lazy GC. Locked files (currently playing) will fail deletion silently.
+            try {
+              final oldSafeFiles = dir.listSync().where((f) =>
+                  f is File &&
+                  f.path.contains('playback_safe_') &&
+                  f.path.endsWith('.flac'));
+
+              for (final oldFile in oldSafeFiles) {
+                try {
+                  oldFile.deleteSync();
+                } catch (_) {
+                  // Locked by player, ignore
+                }
+              }
+            } catch (e) {
+              // Ignore cleanup search errors
+            }
+
+            audioUri = Uri.file(localPath);
+          } catch (e) {
+            print('[AudioHandler] Cleanup failed: $e');
+            audioUri = Uri.file(localPath);
+          }
+        } else {
+          audioUri = Uri.file(localPath);
+        }
       } else {
         // Fetch Stream URL with Retry
         int retries = 0;
         while (retries < 2) {
           try {
+            // ... existing stream logic
             final url = await _dabApiService.getStreamUrl(track.id);
             if (url != null) {
               audioUri = Uri.parse(url);
@@ -352,20 +377,20 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       }
 
       if (audioUri != null) {
-        // Revert to standard AudioSource.uri to avoid Windows file lock crashes (errno 32) behavior with LockCachingAudioSource
+        // Revert to standard AudioSource.uri to avoid Windows file lock crashes
         final source = AudioSource.uri(
           audioUri,
           headers: {'User-Agent': 'BeatBoss/1.0 (Flutter)'},
-          tag: item, // Pass MediaItem as tag
+          tag: item,
         );
 
         await _player.setAudioSource(source, initialPosition: startPosition);
 
+        // ... rest of logic
         if (Platform.isAndroid) {
           _audioSessionId = _player.androidAudioSessionId;
           print("Android Audio Session ID: $_audioSessionId");
         }
-
         _player.play();
       } else {
         print("Error: Failed to get audio URI for track ${track.title}");

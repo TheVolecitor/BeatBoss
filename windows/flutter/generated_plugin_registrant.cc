@@ -7,15 +7,22 @@
 #include "generated_plugin_registrant.h"
 
 #include <audio_service_win/audio_service_win_plugin_c_api.h>
+#include <audiotags/audiotags_plugin_c_api.h>
+#include <desktop_webview_window/desktop_webview_window_plugin.h>
 #include <flutter_secure_storage_windows/flutter_secure_storage_windows_plugin.h>
 #include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
 #include <media_kit_video/media_kit_video_plugin_c_api.h>
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
 #include <url_launcher_windows/url_launcher_windows.h>
+#include <window_to_front/window_to_front_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   AudioServiceWinPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("AudioServiceWinPluginCApi"));
+  AudiotagsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("AudiotagsPluginCApi"));
+  DesktopWebviewWindowPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("DesktopWebviewWindowPlugin"));
   FlutterSecureStorageWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterSecureStorageWindowsPlugin"));
   MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
@@ -26,4 +33,6 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("PermissionHandlerWindowsPlugin"));
   UrlLauncherWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("UrlLauncherWindows"));
+  WindowToFrontPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("WindowToFrontPlugin"));
 }

@@ -4,11 +4,14 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audio_service_win
+  audiotags
+  desktop_webview_window
   flutter_secure_storage_windows
   media_kit_libs_windows_video
   media_kit_video
   permission_handler_windows
   url_launcher_windows
+  window_to_front
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

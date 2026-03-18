@@ -1,23 +1,38 @@
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 import '../models/models.dart';
 
 import 'package:flutter/foundation.dart';
 
 /// DAB API Service - mirrors Python DabAPI class exactly
 class DabApiService extends ChangeNotifier {
-  static const String _baseUrl = 'https://dabmusic.xyz/api';
+  static const String APP_VERSION = '1.8.0';
+  static const String CONFIG_URL =
+      'https://beatboss-config.thevolecitor.workers.dev';
+
+  String _baseUrl = 'https://beta.dabmusic.xyz/api';
+  String get baseUrl => _baseUrl;
 
   final Dio _dio;
   User? _user;
+
+  bool _updateAvailable = false;
+  String? _updateUrl;
+  String? _latestVersion;
+
+  bool get updateAvailable => _updateAvailable;
+  String? get updateUrl => _updateUrl;
+  String? get latestVersion => _latestVersion;
 
   User? get user => _user;
   bool get isLoggedIn => _user != null && _user!.token != null;
 
   DabApiService()
       : _dio = Dio(BaseOptions(
-          baseUrl: _baseUrl,
+          baseUrl: 'https://beta.dabmusic.xyz/api',
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 30),
           headers: {
@@ -43,6 +58,58 @@ class DabApiService extends ChangeNotifier {
         return handler.next(error);
       },
     ));
+  }
+
+  Future<void> fetchConfig() async {
+    try {
+      final response = await _dio.get(CONFIG_URL);
+      
+      if (response.statusCode == 200 && response.data != null) {
+        dynamic data = response.data;
+        
+        if (data is String) {
+          data = jsonDecode(data);
+        }
+
+        if (data is Map) {
+          if (data['baseUrl'] != null) {
+            _baseUrl = data['baseUrl'];
+            _dio.options.baseUrl = _baseUrl;
+          }
+
+          final remoteVersion = data['latestVersion'] as String?;
+          
+          if (remoteVersion != null) {
+            _latestVersion = remoteVersion;
+            if (_isVersionNewer(APP_VERSION, remoteVersion)) {
+              _updateAvailable = true;
+              _updateUrl = data['updateUrl'];
+            }
+          }
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      // Fallback to hardcoded defaults on error
+    }
+  }
+
+  bool _isVersionNewer(String current, String latest) {
+    try {
+      final currentParts = current.split('.').map(int.parse).toList();
+      final latestParts = latest.split('.').map(int.parse).toList();
+
+      for (int i = 0; i < 3; i++) {
+        final c = i < currentParts.length ? currentParts[i] : 0;
+        final l = i < latestParts.length ? latestParts[i] : 0;
+        if (l > c) return true;
+        if (c > l) return false;
+      }
+    } catch (e) {
+      // Fallback to simple string check
+      return latest != current;
+    }
+    return false;
   }
 
   void setUser(User user) {

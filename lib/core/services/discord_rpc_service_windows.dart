@@ -37,7 +37,8 @@ class DiscordRpcServiceWindows implements DiscordRpcService {
         _sendHandshake();
         _isInitialized = true;
       } else {
-        print('[DiscordRPC] Failed to connect: ${GetLastError()}');
+        // Suppress print to avoid log noise if Discord isn't running
+        // print('[DiscordRPC] Failed to connect: ${GetLastError()}');
       }
     } finally {
       calloc.free(lpszPipeName);

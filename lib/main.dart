@@ -41,6 +41,9 @@ void main() async {
 
   // 2. Core Services
   final dabApiService = DabApiService();
+  // Fetch dynamic config from Cloudflare Worker
+  await dabApiService.fetchConfig();
+  
   final downloadManager =
       DownloadManagerService(settingsService: settingsService);
 

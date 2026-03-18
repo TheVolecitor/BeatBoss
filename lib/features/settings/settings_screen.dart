@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/services/settings_service.dart';
@@ -7,7 +8,7 @@ import '../../core/services/download_manager_service.dart';
 import '../../core/services/dab_api_service.dart';
 import '../../core/services/last_fm_service.dart';
 
-import 'package:flutter/foundation.dart'; // For platform check, though we might use service.isSupported
+// For platform check
 
 /// Settings Screen - theme toggle, download management, cache clearing
 class SettingsScreen extends StatefulWidget {
@@ -46,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final downloadManager = context.watch<DownloadManagerService>();
+    final api = context.watch<DabApiService>();
     final isDark = settings.isDarkMode;
 
     return SingleChildScrollView(
@@ -149,11 +151,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'About & Account',
             isDark: isDark,
             children: [
-              const ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('Version'),
-                subtitle: Text('1.7.0 (Flutter)'),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Version'),
+                subtitle: Text('${DabApiService.APP_VERSION} (Flutter)'),
+                trailing: api.updateAvailable
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'Update Available',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
+              if (api.updateAvailable)
+                ListTile(
+                  leading: const Icon(Icons.system_update,
+                      color: AppTheme.primaryGreen),
+                  title: Text('New Version Available: ${api.latestVersion}'),
+                  subtitle: const Text('Tap to download the latest update'),
+                  onTap: () {
+                    if (api.updateUrl != null) {
+                      _showUpdateDialog(api.updateUrl!, api.latestVersion!);
+                    }
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
                 title: const Text('Sign Out',
@@ -186,6 +218,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  void _showUpdateDialog(String url, String version) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Update to v$version?'),
+        content: Text(
+            'A new version of BeatBoss is available ($version).\n\nWould you like to go to the download page?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () async {
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('Update Now'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _clearCache() {

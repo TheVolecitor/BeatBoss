@@ -104,8 +104,7 @@ class AudioPlayerService with ChangeNotifier {
     // Let's assume we need to update constructor.
     // For now, let's keep it simple: Main.dart calls audioEffectsService.init(audioHandler.player)
 
-    // Always start ticker for robust polling on Windows
-    _startTicker();
+    // Initialize Discord RPC if enabled
 
     // Listen to Playback State
     _handler.playbackState.listen((state) {
@@ -130,6 +129,11 @@ class AudioPlayerService with ChangeNotifier {
 
       if (state.queueIndex != null) {
         _currentIndex = state.queueIndex!;
+      }
+
+      if (_isPlaying != state.playing) {
+        _isPlaying = state.playing;
+        _updateDiscordPresence(); // Update Discord on Play/Pause
       }
 
       notifyListeners();
@@ -197,44 +201,16 @@ class AudioPlayerService with ChangeNotifier {
 
       notifyListeners();
     });
+
+    // Optimization: Listen to shuffle/repeat changes directly or via streams.
+
+    // Update Discord on track changes, state changes, or seeks.
   }
 
-  Timer? _ticker;
-
-  void _startTicker() {
-    _ticker?.cancel();
-    // Poll frequently (200ms) to catch play state changes and position
-    _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      try {
-        final pos = _handler.currentPosition;
-        final playing = _handler.isPlayerPlaying;
-
-        bool notify = false;
-
-        if (pos != _position) {
-          _position = pos;
-          _updateCurrentLyric();
-          notify = true;
-        }
-
-        if (playing != _isPlaying) {
-          _isPlaying = playing;
-          notify = true;
-          _updateDiscordPresence();
-        }
-
-        if (notify) {
-          notifyListeners();
-        }
-      } catch (e) {
-        // Suppress errors
-      }
-    });
-  }
+  // Logic refactored into stream listeners for performance.
 
   void _stopTicker() {
-    _ticker?.cancel();
-    _ticker = null;
+    // Ticker removed
   }
 
   // Controls

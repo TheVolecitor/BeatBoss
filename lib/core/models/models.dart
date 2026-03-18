@@ -8,6 +8,7 @@ class Track {
   final String? albumId;
   final int? duration; // Seconds
   final AudioQuality? audioQuality;
+  final Map<String, dynamic>? rawData; // Store original API response for fidelity
 
   Track({
     required this.id,
@@ -18,6 +19,7 @@ class Track {
     this.albumId,
     this.duration,
     this.audioQuality,
+    this.rawData,
   });
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -35,6 +37,7 @@ class Track {
       audioQuality: json['audioQuality'] != null
           ? AudioQuality.fromJson(json['audioQuality'])
           : null,
+      rawData: json,
     );
   }
 
