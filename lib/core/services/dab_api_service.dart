@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 
 /// DAB API Service - mirrors Python DabAPI class exactly
 class DabApiService extends ChangeNotifier {
-  static const String APP_VERSION = '1.8.0';
+  static const String APP_VERSION = '1.8.5';
   static const String CONFIG_URL =
       'https://beatboss-config.thevolecitor.workers.dev';
 
