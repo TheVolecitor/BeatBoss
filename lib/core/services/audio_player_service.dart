@@ -228,18 +228,8 @@ class AudioPlayerService with ChangeNotifier {
     await _handler.setRequestQueue(tracks, pendingIndex: startIndex);
   }
 
-  void addToQueue(Track track) {
-    // Append to current queue
-    // Since _queue is a getter, we modify handler
-    // But BaseAudioHandler queue is a stream.
-    // We invoke 'addQueueItem'
-    // We need to pass MediaItem
-    // Implementation detail for AppAudioHandler.addQueueItem
-    // For now, simpler:
-    final currentQ = List<Track>.from(_queue);
-    currentQ.add(track);
-    _handler.setRequestQueue(currentQ,
-        pendingIndex: _currentIndex); // Inefficient but works
+  Future<void> addToQueue(Track track) async {
+    await _handler.addTrackToQueue(track);
   }
 
   // ... (Other queue methods similarly simplified or proxied)

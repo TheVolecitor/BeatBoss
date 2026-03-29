@@ -489,6 +489,18 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     queue.add(_internalQueue.map(_toMediaItem).toList());
   }
 
+  Future<void> addTrackToQueue(Track track) async {
+    if (_internalQueue.isEmpty) {
+      await setRequestQueue([track]);
+      return;
+    }
+
+    _internalQueue.add(track);
+    
+    // Update Queue Stream without interrupting playback
+    queue.add(_internalQueue.map(_toMediaItem).toList());
+  }
+
   @override
   Future<void> onTaskRemoved() async {
     await stop();

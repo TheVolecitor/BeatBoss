@@ -9,6 +9,8 @@ import '../../core/services/dab_api_service.dart';
 import '../../core/models/models.dart';
 import '../../core/services/history_service.dart';
 import '../../core/services/last_fm_service.dart';
+import '../../core/services/download_manager_service.dart';
+import '../../core/utils/app_toast.dart';
 import '../import/playlist_import_dialog.dart';
 
 /// Home Screen - displays play history and welcome message, or Login if not authenticated
@@ -653,9 +655,7 @@ class _HomeScreenState extends State<HomeScreen>
         // Usually handled by API calls later.
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Welcome, ${user.username}!'),
-              backgroundColor: AppTheme.primaryGreen));
+          AppToast.show(context, 'Welcome, ${user.username}!');
         }
       } else {
         setState(() =>
@@ -804,17 +804,26 @@ class _RecentTrackCard extends StatelessWidget {
                             switch (value) {
                               case 'queue':
                                 player.addToQueue(track);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Added to Queue')),
-                                );
+                                AppToast.show(context, 'Added to Queue');
                                 break;
                               case 'play_next':
                                 player.playNext(track);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Will play next')),
-                                );
+                                AppToast.show(context, 'Will play next');
+                                break;
+                              case 'download':
+                                final api = context.read<DabApiService>();
+                                final downloadManager = context.read<DownloadManagerService>();
+                                api.getStreamUrl(track.id).then((url) {
+                                  if (url != null && context.mounted) {
+                                    downloadManager.downloadTrack(track: track, streamUrl: url);
+                                    AppToast.show(context, 'Download started');
+                                  } else if (context.mounted) {
+                                    AppToast.show(context, 'Failed to get download URL', isError: true);
+                                  }
+                                });
+                                break;
+                              case 'add_library':
+                                _showLibraryPicker(context, track);
                                 break;
                             }
                           },
@@ -836,6 +845,26 @@ class _RecentTrackCard extends StatelessWidget {
                                   Icon(Icons.playlist_play, size: 20),
                                   SizedBox(width: 10),
                                   Text('Play Next'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'add_library',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.library_add, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Add to Library'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'download',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.download, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Download'),
                                 ],
                               ),
                             ),
@@ -870,6 +899,56 @@ class _RecentTrackCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showLibraryPicker(BuildContext context, Track track) async {
+    final api = context.read<DabApiService>();
+    final libraries = await api.getLibraries();
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.darkCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bContext) {
+        if (libraries.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+              heightFactor: 1,
+              child: Text('No libraries found. Create one first!'),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          itemCount: libraries.length,
+          itemBuilder: (c, i) {
+            final lib = libraries[i];
+            return ListTile(
+              leading: const Icon(Icons.library_music, color: AppTheme.primaryGreen),
+              title: Text(lib.name),
+              onTap: () async {
+                Navigator.pop(bContext); // Close sheet
+                final success = await api.addTrackToLibrary(lib.id, track);
+                if (context.mounted) {
+                  AppToast.show(
+                    context,
+                    success ? 'Added to ${lib.name}' : 'Failed to add track',
+                    isError: !success,
+                  );
+                }
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../core/services/youtube_service.dart';
 import '../../core/services/spotify_service.dart';
 import '../../core/services/dab_api_service.dart';
 import '../../core/services/settings_service.dart';
+import '../../core/services/import_service.dart';
 import '../../core/models/models.dart';
 
 class ImportItem {
@@ -35,17 +36,11 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
   final TextEditingController _urlController = TextEditingController();
 
   // State mgmt
-  int _step =
-      0; // 0: URL input, 1: Select Tracks, 2: Select Library, 3: Importing
+  int _step = 0; // 0: URL input, 1: Select Tracks, 2: Select Library, 3: Importing
   List<ImportItem> _playlistItems = [];
   Map<String, bool> _selectedItems = {};
   bool _isLoading = false;
   String? _error;
-
-  // Import Progress
-  int _importedCount = 0;
-  int _totalToImport = 0;
-  String _currentImportingTitle = '';
 
   Future<void> _fetchPlaylist() async {
     final url = _urlController.text;
@@ -111,65 +106,36 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
     setState(() => _step = 2);
   }
 
-  Future<void> _startImport(String libraryId) async {
+  void _startImport(String libraryId) {
     final selectedTracks =
         _playlistItems.where((i) => _selectedItems[i.id] == true).toList();
 
     setState(() {
       _step = 3;
-      _totalToImport = selectedTracks.length;
-      _importedCount = 0;
     });
 
     final api = context.read<DabApiService>();
+    final importService = context.read<ImportService>();
 
-    // Use chunks to parallelize but not completely overwhelm (batch size 5)
-    // Actually user said "without api rate limit" so let's go faster, e.g. batch 10
-    final int batchSize = 10;
-
-    for (var i = 0; i < selectedTracks.length; i += batchSize) {
-      if (!mounted) break;
-
-      final end = (i + batchSize < selectedTracks.length)
-          ? i + batchSize
-          : selectedTracks.length;
-      final batch = selectedTracks.sublist(i, end);
-
-      await Future.wait(batch.map((item) async {
-        try {
-          // Clean title for better search
-          String query = '${item.title} ${item.subtitle}'
-              .replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '')
-              .trim();
-
-          final results = await api.search(query, limit: 1);
-          if (results != null && results.tracks.isNotEmpty) {
-            final track = results.tracks.first;
-            await api.addTrackToLibrary(libraryId, track);
-            if (mounted) setState(() => _importedCount++);
+    importService.startImport(
+      api: api,
+      libraryId: libraryId,
+      tracks: selectedTracks,
+    ).then((_) {
+      // Auto-close if finished and not backgrounded
+      if (mounted && importService.statusMessage == 'Done!' && !importService.isBackgrounded) {
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text(
+                      'Import complete: ${importService.importedCount} / ${importService.totalTracks} tracks added')),
+            );
           }
-        } catch (e) {
-          print('Import error for ${item.title}: $e');
-        }
-      }));
-
-      if (mounted) {
-        setState(() {
-          _currentImportingTitle = "Batch ${i ~/ batchSize + 1} done...";
         });
       }
-    }
-
-    if (mounted) {
-      setState(() => _currentImportingTitle = 'Done!');
-      await Future.delayed(const Duration(seconds: 1));
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'Import complete: $_importedCount / $_totalToImport tracks added')),
-      );
-    }
+    });
   }
 
   @override
@@ -299,26 +265,30 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
         );
 
       case 3: // Importing Progress
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('Importing Tracks...',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            LinearProgressIndicator(
-              value: _totalToImport > 0 ? _importedCount / _totalToImport : 0,
-              backgroundColor: Colors.grey[800],
-              color: AppTheme.primaryGreen,
-              minHeight: 10,
-            ),
-            const SizedBox(height: 10),
-            Text('$_importedCount / $_totalToImport'),
-            const SizedBox(height: 20),
-            Text(_currentImportingTitle,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-          ],
+        return Consumer<ImportService>(
+          builder: (context, importService, _) {
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Importing Tracks...',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                LinearProgressIndicator(
+                  value: importService.progress,
+                  backgroundColor: Colors.grey[800],
+                  color: AppTheme.primaryGreen,
+                  minHeight: 10,
+                ),
+                const SizedBox(height: 10),
+                Text('${importService.importedCount} / ${importService.totalTracks}'),
+                const SizedBox(height: 20),
+                Text(importService.statusMessage,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            );
+          },
         );
 
       default:
@@ -327,7 +297,24 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
   }
 
   List<Widget> _buildActions() {
-    if (_step == 3) return []; // No actions during import
+    if (_step == 3) {
+      final importService = context.watch<ImportService>();
+      return [
+        TextButton(
+          onPressed: () {
+            importService.stopImport();
+          },
+          child: const Text('Stop', style: TextStyle(color: Colors.red)),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            importService.setBackground(true);
+            Navigator.pop(context); // Hide dialog
+          },
+          child: const Text('Run in background'),
+        ),
+      ];
+    }
 
     return [
       if (_step > 0)

@@ -8,6 +8,7 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/models/models.dart';
+import '../../core/utils/app_toast.dart';
 
 /// Reusable Track List Tile - used across search, library, favorites
 class TrackListTile extends StatelessWidget {
@@ -200,7 +201,6 @@ class TrackListTile extends StatelessWidget {
             color: isDark ? Colors.white54 : Colors.black45),
         onPressed: () async {
           final api = context.read<DabApiService>();
-          final scaffoldMessenger = ScaffoldMessenger.of(context);
 
           // Allow immediate feedback?
           // Better to show loading if possible, but for now just start async
@@ -211,8 +211,7 @@ class TrackListTile extends StatelessWidget {
               streamUrl: url,
             );
           } else if (context.mounted) {
-            scaffoldMessenger.showSnackBar(
-                const SnackBar(content: Text('Failed to get download URL')));
+            AppToast.show(context, 'Failed to get download URL', isError: true);
           }
         },
         tooltip: 'Download',
@@ -232,23 +231,19 @@ class TrackListTile extends StatelessWidget {
         break;
       case 'add_queue':
         player.addToQueue(track);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added "${track.title}" to queue')),
-        );
+        AppToast.show(context, 'Added "${track.title}" to queue');
         break;
       case 'play_next':
         player.playNext(track);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Will play "${track.title}" next')),
-        );
+        AppToast.show(context, 'Will play "${track.title}" next');
         break;
       case 'like':
         api.addFavorite(track).then((success) {
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content:
-                      Text(success ? 'Added to Liked Songs' : 'Failed to add')),
+            AppToast.show(
+              context, 
+              success ? 'Added to Liked Songs' : 'Failed to add',
+              isError: !success,
             );
           }
         });
@@ -256,11 +251,10 @@ class TrackListTile extends StatelessWidget {
       case 'unlike':
         api.removeFavorite(track.id).then((success) {
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(success
-                      ? 'Removed from Liked Songs'
-                      : 'Failed to remove')),
+            AppToast.show(
+              context,
+              success ? 'Removed from Liked Songs' : 'Failed to remove',
+              isError: !success,
             );
             // Optional: Request refresh of parent if needed, handled by parent state usually
             if (success) {
@@ -307,11 +301,10 @@ class TrackListTile extends StatelessWidget {
                           await api.addTrackToLibrary(lib.id, track);
                       if (context.mounted) {
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text(success
-                                  ? 'Added to ${lib.name}'
-                                  : 'Failed to add')),
+                        AppToast.show(
+                          context,
+                          success ? 'Added to ${lib.name}' : 'Failed to add',
+                          isError: !success,
                         );
                       }
                     },

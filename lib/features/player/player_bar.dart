@@ -41,7 +41,7 @@ class _PlayerBarState extends State<PlayerBar> {
         top: 0,
         left: 0,
         right: 0,
-        bottom: 84, // Sit exactly above the player bar
+        bottom: 72, // Sit exactly flush with the 72px desktop player bar
         child: Material(
           color: (isDark ? Colors.black : Colors.white).withOpacity(0.9),
           child: LyricsList(isDark: isDark), // Reusing the refactored widget

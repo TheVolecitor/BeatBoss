@@ -9,6 +9,7 @@ import '../core/theme/app_theme.dart';
 import '../core/services/audio_player_service.dart';
 import '../core/services/settings_service.dart';
 import '../core/services/dab_api_service.dart';
+import '../core/services/import_service.dart';
 import 'home/home_screen.dart';
 import 'search/search_screen.dart';
 import 'library/library_screen.dart';
@@ -160,16 +161,22 @@ class _AppShellState extends State<AppShell> {
           backgroundColor:
               isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
           body: SafeArea(
-            child: Column(
+            child: Stack(
               children: [
-                // Main content area
-                Expanded(
-                  child: isMobile
-                      ? _buildMobileLayout(isDark)
-                      : _buildDesktopLayout(isDark),
+                Column(
+                  children: [
+                    // Main content area
+                    Expanded(
+                      child: isMobile
+                          ? _buildMobileLayout(isDark)
+                          : _buildDesktopLayout(isDark),
+                    ),
+                    // Player bar at bottom
+                    const PlayerBar(),
+                  ],
                 ),
-                // Player bar at bottom
-                const PlayerBar(),
+                // Overlay for Background Imports
+                _buildBackgroundImportOverlay(),
               ],
             ),
           ),
@@ -177,6 +184,72 @@ class _AppShellState extends State<AppShell> {
           bottomNavigationBar: isMobile ? _buildBottomNav(isDark) : null,
         ),
       ),
+    );
+  }
+
+  Widget _buildBackgroundImportOverlay() {
+    return Consumer<ImportService>(
+      builder: (context, importService, child) {
+        if (!importService.isImporting || !importService.isBackgrounded) {
+          return const SizedBox.shrink();
+        }
+
+        return Positioned(
+          top: 10,
+          right: 10,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            color: Theme.of(context).cardColor,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              width: 300,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Importing Playlist...',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                        onPressed: () => importService.stopImport(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: importService.progress,
+                    backgroundColor: Colors.grey[800],
+                    color: AppTheme.primaryGreen,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    importService.statusMessage,
+                    style: const TextStyle(fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '${importService.importedCount} / ${importService.totalTracks} Tracks',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

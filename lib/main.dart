@@ -24,6 +24,8 @@ import 'features/app_shell.dart';
 
 import 'core/services/history_service.dart';
 
+import 'core/services/import_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -49,6 +51,8 @@ void main() async {
 
   final historyService = HistoryService();
   await historyService.init();
+
+  final importService = ImportService(); // New background import service
 
   // 3. Audio Handler
   // Note: AppAudioHandler needs to be imported
@@ -110,6 +114,7 @@ void main() async {
         ChangeNotifierProvider.value(value: downloadManager),
         ChangeNotifierProvider.value(value: historyService),
         ChangeNotifierProvider.value(value: dabApiService),
+        ChangeNotifierProvider.value(value: importService),
         Provider.value(value: youtubeService),
         Provider.value(value: spotifyService),
         ChangeNotifierProvider.value(value: lastFmService),

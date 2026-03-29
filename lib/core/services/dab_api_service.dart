@@ -146,6 +146,9 @@ class DabApiService extends ChangeNotifier {
       }
     } catch (e) {
       print('[DAB API] Search error: $e');
+      if (e is DioException && e.response?.statusCode == 429) {
+        throw Exception('Rate limit (429)');
+      }
     }
     return null;
   }
