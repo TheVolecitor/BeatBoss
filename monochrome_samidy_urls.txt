@@ -1,7 +1,0 @@
-OPTIONS https://data.samidy.xyz/api/collections/public_playlists/records
-GET https://monochrome-api.samidy.com/artist/
-GET https://data.samidy.xyz/api/collections/DB_users/records
-OPTIONS https://data.samidy.xyz/api/collections/DB_users/records
-GET https://data.samidy.xyz/api/collections/public_playlists/records
-PATCH https://data.samidy.xyz/api/collections/DB_users/records/2lay6zna66hh2cb
-OPTIONS https://data.samidy.xyz/api/collections/DB_users/records/2lay6zna66hh2cb
