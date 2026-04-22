@@ -29,7 +29,7 @@ jobs:
             libasound2-dev \
             libdbus-1-dev \
             appstream \
-            libfuse2 # Required for AppImage to run on modern Ubuntu runners
+            libfuse2
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -40,6 +40,13 @@ jobs:
       - name: Install Flutter Distributor
         run: dart pub global activate flutter_distributor
 
+      # ---> THE NEW APPIMAGE FIX IS HERE <---
+      - name: Install appimagetool
+        run: |
+          wget -O appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          sudo mv appimagetool /usr/local/bin/
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -48,16 +55,14 @@ jobs:
 
       - name: Build and Package
         run: |
-          # Ensure the Dart binaries are in the path
           export PATH="$PATH":"$HOME/.pub-cache/bin"
-          
-          # This builds both .deb and .AppImage based on your distributor.yaml
+          # This builds BOTH .deb and .AppImage based on your config
           flutter_distributor release --name production --jobs linux-deb,linux-appimage
 
       - name: Upload Installers
         uses: actions/upload-artifact@v4
         with:
           name: BeatBoss-Linux-Installers
-          # flutter_distributor puts compiled files in the dist/ folder
+          # Grabs all generated installers from the dist/ folder
           path: dist/production/*/
           retention-days: 7
