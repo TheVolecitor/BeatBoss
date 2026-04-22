@@ -1,7 +1,9 @@
 display_name: BeatBoss
 package_name: beatboss
 maintainer:
-  name: TheVolecitor
-  email: thevolecitor@gmail.com
+  name: Your Name
+  email: contact@example.com
 icon: assets/icon.png
-categories: AudioVideo;Audio;
+categories:
+  - AudioVideo
+  - Audio
