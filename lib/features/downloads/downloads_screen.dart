@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/services/settings_service.dart';
-import '../../core/models/models.dart';
+
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../features/shared/track_list_tile.dart';
@@ -28,24 +28,10 @@ class DownloadsScreen extends StatelessWidget {
           // Header
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Icon(
-                    Icons.download_done,
-                    size: 32,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
-                  const SizedBox(width: 15),
-                  Text(
-                    'Downloads',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                  const Spacer(),
                   // Play All Button (if tracks exist)
                   if (tracks.isNotEmpty)
                     ElevatedButton.icon(

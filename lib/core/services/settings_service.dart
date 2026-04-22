@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:convert';
 
 import '../models/models.dart';
+import '../models/addon_models.dart';
 
 /// Settings service - matches original Python Settings class
 /// Handles theme, download location, play history, user credentials
@@ -24,6 +25,10 @@ class SettingsService extends ChangeNotifier {
   static const String _keyDownloadedTracks = 'downloaded_tracks';
   // New: Store Track metadata (ID -> JSON)
   static const String _keyDownloadedTracksMeta = 'downloaded_tracks_meta';
+  // Addon system
+  static const String _keyAddonsList = 'addons_list';
+  static const String _keyActiveAddonId = 'active_addon_id';
+  static const String _keyRemovedBuiltins = 'removed_builtins';
 
   Future<void> init() async {
     _box = await Hive.openBox(_boxName);
@@ -234,5 +239,62 @@ class SettingsService extends ChangeNotifier {
     }
     await _box.put(_keyDownloadedTracks, '{}');
     notifyListeners();
+  }
+
+  // ========== Addon System ==========
+
+  List<AddonManifest> loadAddons() {
+    final dataString = _box.get(_keyAddonsList);
+    if (dataString == null || dataString.isEmpty) return [];
+
+    try {
+      final List<dynamic> jsonList = jsonDecode(dataString);
+      return jsonList.map((item) => AddonManifest.fromJson(item)).toList();
+    } catch (e) {
+      print('[SettingsService] Failed to load addons: $e');
+      return [];
+    }
+  }
+
+  Future<void> saveAddons(List<AddonManifest> addons) async {
+    final jsonList = addons.map((a) => a.toJson()).toList();
+    await _box.put(_keyAddonsList, jsonEncode(jsonList));
+  }
+
+  String? getActiveAddonId() {
+    return _box.get(_keyActiveAddonId);
+  }
+
+  Future<void> setActiveAddonId(String id) async {
+    await _box.put(_keyActiveAddonId, id);
+  }
+
+  // ========== Removed Built-ins ==========
+
+  List<String> getRemovedBuiltins() {
+    final data = _box.get(_keyRemovedBuiltins, defaultValue: []);
+    return List<String>.from(data);
+  }
+
+  bool isBuiltinRemoved(String id) {
+    return getRemovedBuiltins().contains(id);
+  }
+
+  Future<void> markBuiltinRemoved(String id) async {
+    final removed = getRemovedBuiltins();
+    if (!removed.contains(id)) {
+      removed.add(id);
+      await _box.put(_keyRemovedBuiltins, removed);
+      notifyListeners();
+    }
+  }
+
+  Future<void> markBuiltinRestored(String id) async {
+    final removed = getRemovedBuiltins();
+    if (removed.contains(id)) {
+      removed.remove(id);
+      await _box.put(_keyRemovedBuiltins, removed);
+      notifyListeners();
+    }
   }
 }

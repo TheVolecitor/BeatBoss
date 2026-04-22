@@ -74,8 +74,9 @@ class DownloadManagerService extends ChangeNotifier {
           // Ignore
         }
       }
-      if (count > 0)
+      if (count > 0) {
         print('[DownloadManager] Cleaned up $count temporary playback files.');
+      }
     } catch (e) {
       print('[DownloadManager] Cleanup error: $e');
     }

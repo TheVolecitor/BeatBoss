@@ -1,0 +1,65 @@
+﻿Analyzing DAB-py...                                             
+
+warning - Unused import: 'package:media_kit/media_kit.dart' - lib\core\services\audio_handler.dart:7:8 - unused_import
+   info - The constant name 'APP_VERSION' isn't a lowerCamelCase identifier - lib\core\services\dab_api_service.dart:10:23 - constant_identifier_names
+   info - The constant name 'CONFIG_URL' isn't a lowerCamelCase identifier - lib\core\services\dab_api_service.dart:11:23 - constant_identifier_names
+   info - The imported package 'ffi' isn't a dependency of the importing package - lib\core\services\discord_rpc_service_windows.dart:4:8 - depend_on_referenced_packages
+   info - 'elementAt' is deprecated and shouldn't be used. Use operator + instead - lib\core\services\discord_rpc_service_windows.dart:141:33 - deprecated_member_use
+   info - Statements in an if should be enclosed in a block - lib\core\services\download_manager_service.dart:78:9 - curly_braces_in_flow_control_structures
+  error - The argument type 'String?' can't be assigned to the parameter type 'String'.  - lib\core\services\last_fm_service.dart:46:66 - argument_type_not_assignable
+warning - Unused import: 'package:flutter/foundation.dart' - lib\core\services\secure_storage_service.dart:1:8 - unused_import
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:56:36 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:82:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:138:36 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\core\theme\app_theme.dart:164:36 - deprecated_member_use
+   info - Use interpolation to compose strings and values - lib\core\utils\dash_utils.dart:25:19 - prefer_interpolation_to_compose_strings
+   info - Use interpolation to compose strings and values - lib\core\utils\dash_utils.dart:28:31 - prefer_interpolation_to_compose_strings
+   info - Unnecessary escape in string literal - lib\core\utils\dash_utils.dart:56:77 - unnecessary_string_escapes
+   info - Unnecessary escape in string literal - lib\core\utils\dash_utils.dart:57:69 - unnecessary_string_escapes
+   info - Statements in a for should be enclosed in a block - lib\core\utils\dash_utils.dart:94:42 - curly_braces_in_flow_control_structures
+warning - The declaration '_crc8' isn't referenced - lib\core\utils\flac_utils.dart:27:14 - unused_element
+warning - The value of the local variable 'blocking' isn't used - lib\core\utils\flac_utils.dart:190:11 - unused_local_variable
+warning - The value of the local variable 'headerLen' isn't used - lib\core\utils\flac_utils.dart:214:9 - unused_local_variable
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\app_shell.dart:314:39 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\app_shell.dart:422:33 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\app_shell.dart:424:42 - use_build_context_synchronously
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\app_shell.dart:445:33 - deprecated_member_use
+warning - Unused import: '../../core/models/models.dart' - lib\features\downloads\downloads_screen.dart:6:8 - unused_import
+   info - Use 'const' with the constructor to improve performance - lib\features\home\home_screen.dart:333:15 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\home\home_screen.dart:335:24 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - lib\features\home\home_screen.dart:337:23 - prefer_const_constructors
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\home\home_screen.dart:471:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\home\home_screen.dart:484:44 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\home\home_screen.dart:686:46 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\home\home_screen.dart:763:43 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\home\home_screen.dart:796:51 - deprecated_member_use
+   info - Use 'const' for final variables initialized to a constant value - lib\features\import\playlist_import_dialog.dart:128:5 - prefer_const_declarations
+   info - Don't use 'BuildContext's across async gaps - lib\features\import\playlist_import_dialog.dart:166:21 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\features\import\playlist_import_dialog.dart:167:28 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\library\library_screen.dart:394:33 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\library\library_screen.dart:435:33 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\library\library_screen.dart:465:31 - use_build_context_synchronously
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\player\player_bar.dart:46:57 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\player\player_bar.dart:78:63 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\player\player_bar.dart:81:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\player\player_bar.dart:281:44 - deprecated_member_use
+warning - The value of the local variable 'size' isn't used - lib\features\player\player_bar.dart:397:11 - unused_local_variable
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\player\player_bar.dart:680:46 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\queue\queue_screen.dart:82:55 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\search\search_screen.dart:328:41 - deprecated_member_use
+warning - The value of the field '_downloadLocation' isn't used - lib\features\settings\settings_screen.dart:22:11 - unused_field
+warning - The value of the field '_storageSize' isn't used - lib\features\settings\settings_screen.dart:23:8 - unused_field
+warning - The value of the field '_downloadedCount' isn't used - lib\features\settings\settings_screen.dart:24:8 - unused_field
+   info - Use 'const' with the constructor to improve performance - lib\features\settings\settings_screen.dart:157:27 - prefer_const_constructors
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\settings\settings_screen.dart:272:31 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\settings\settings_screen.dart:274:38 - use_build_context_synchronously
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\settings\settings_screen.dart:321:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\settings\settings_screen.dart:337:40 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\settings\settings_screen.dart:419:46 - use_build_context_synchronously
+   info - Statements in an if should be enclosed in a block - lib\features\shared\batch_download_dialog.dart:73:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\shared\batch_download_dialog.dart:110:15 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\shared\batch_download_dialog.dart:112:15 - curly_braces_in_flow_control_structures
+warning - The declaration '_stopDownload' isn't referenced - lib\features\shared\batch_download_dialog.dart:133:8 - unused_element
+   info - 'onPopInvoked' is deprecated and shouldn't be used. Use onPopInvokedWithResult instead. This feature was deprecated after v3.22.0-12.0.pre - lib\features\shared\batch_download_dialog.dart:157:7 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\shared\track_list_tile.dart:46:33 - deprecated_member_use
+

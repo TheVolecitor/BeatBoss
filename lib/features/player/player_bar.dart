@@ -6,8 +6,12 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/models/models.dart';
+import '../../core/services/local_library_service.dart';
+import '../../core/services/addon_service.dart';
 import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_screen.dart';
+import '../search/search_screen.dart';
+import '../shared/addon_detail_screen.dart';
 
 /// Player Bar - bottom player controls matching original exactly
 class PlayerBar extends StatefulWidget {
@@ -147,11 +151,35 @@ class _DesktopPlayerBar extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        track.artist,
-                        style: TextStyle(color: secondaryColor, fontSize: 12),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      GestureDetector(
+                        onTap: track.artistId != null
+                            ? () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => AddonDetailScreen(
+                                      id: track.artistId!,
+                                      type: AddonDetailType.artist,
+                                      addonId: track.addonId ?? '',
+                                      initialTitle: track.artist,
+                                    ),
+                                  ),
+                                );
+                              }
+                            : null,
+                        child: Text(
+                          track.artist,
+                          style: TextStyle(
+                            color: secondaryColor,
+                            fontSize: 12,
+                            decoration: track.artistId != null
+                                ? TextDecoration.underline
+                                : null,
+                            decorationColor: secondaryColor.withOpacity(0.3),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       if (track.isHiRes)
                         Container(
@@ -172,6 +200,23 @@ class _DesktopPlayerBar extends StatelessWidget {
                         ),
                     ],
                   ),
+                ),
+                Consumer<LocalLibraryService>(
+                  builder: (context, localLibrary, child) {
+                    final isFav = localLibrary.isFavourite(track.id);
+                    return IconButton(
+                      icon:
+                          Icon(isFav ? Icons.favorite : Icons.favorite_border),
+                      color: isFav ? AppTheme.primaryGreen : secondaryColor,
+                      iconSize: 22,
+                      onPressed: () {
+                        localLibrary.toggleFavourite(track,
+                            addonService: context.read<AddonService>());
+                      },
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      constraints: const BoxConstraints(),
+                    );
+                  },
                 ),
               ],
             ),
@@ -393,8 +438,6 @@ class _VolumeButtonState extends State<_VolumeButton> {
 
   void _showOverlay() {
     final overlay = Overlay.of(context);
-    final renderBox = context.findRenderObject() as RenderBox;
-    final size = renderBox.size;
 
     _overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
@@ -496,6 +539,15 @@ class _MobilePlayerBar extends StatelessWidget {
         ),
         GestureDetector(
           onTap: () => _showExpandedPlayer(context),
+          onVerticalDragEnd: (details) {
+            if (details.primaryVelocity! < -300) {
+              // Swipe UP
+              _showExpandedPlayer(context);
+            } else if (details.primaryVelocity! > 300) {
+              // Swipe DOWN
+              player.clearQueue();
+            }
+          },
           child: Container(
             color: Colors.transparent, // Ensure hit test works
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -525,6 +577,25 @@ class _MobilePlayerBar extends StatelessWidget {
                           maxLines: 1),
                     ],
                   ),
+                ),
+                Consumer<LocalLibraryService>(
+                  builder: (context, localLibrary, child) {
+                    final isFav = localLibrary.isFavourite(track.id);
+                    return IconButton(
+                      icon:
+                          Icon(isFav ? Icons.favorite : Icons.favorite_border),
+                      color: isFav
+                          ? AppTheme.primaryGreen
+                          : (isDark ? Colors.white54 : Colors.black45),
+                      iconSize: 20,
+                      onPressed: () {
+                        localLibrary.toggleFavourite(track,
+                            addonService: context.read<AddonService>());
+                      },
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      constraints: const BoxConstraints(),
+                    );
+                  },
                 ),
                 InkWell(
                     onTap: player.togglePlayPause,
@@ -589,11 +660,20 @@ class _ExpandedMobilePlayer extends StatelessWidget {
 
     return DraggableScrollableSheet(
       initialChildSize: 1.0,
-      minChildSize: 0.0, // Allows dismissing by dragging down
+      minChildSize: 0.0,
       maxChildSize: 1.0,
       snap: true,
-      snapSizes: const [0.9, 1.0],
       builder: (context, scrollController) {
+        final screenHeight = MediaQuery.of(context).size.height;
+        final screenWidth = MediaQuery.of(context).size.width;
+        final isSmallScreen = screenHeight < 700;
+
+        // Dynamic sizes
+        final artSize = isSmallScreen ? screenHeight * 0.3 : 300.0;
+        final titleFontSize = isSmallScreen ? 20.0 : 26.0;
+        final artistFontSize = isSmallScreen ? 14.0 : 18.0;
+        final sectionSpacing = isSmallScreen ? 15.0 : 30.0;
+
         return Consumer<AudioPlayerService>(builder: (context, player, _) {
           return Container(
             decoration: BoxDecoration(
@@ -606,10 +686,11 @@ class _ExpandedMobilePlayer extends StatelessWidget {
               controller: scrollController,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height * 0.9,
+                  minHeight: screenHeight,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(24.0),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -628,34 +709,57 @@ class _ExpandedMobilePlayer extends StatelessWidget {
 
                       // Art
                       SizedBox(
-                          height: 300,
+                          height: artSize,
                           child: Center(
                               child: _TrackArt(
                                   imageUrl: track.displayImage,
-                                  size: 280,
+                                  size: artSize - 20,
                                   isDownloaded: false))),
-                      const SizedBox(height: 20),
+                      SizedBox(height: sectionSpacing),
 
                       // Info
                       Column(
                         children: [
-                          Text(track.title,
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              track.title,
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                   color: textColor,
-                                  fontSize: 22,
+                                  fontSize: titleFontSize,
                                   fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
                               maxLines: 2,
-                              overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
                           const SizedBox(height: 8),
-                          Text(track.artist,
-                              style: TextStyle(
-                                  color: secondaryColor, fontSize: 18),
-                              textAlign: TextAlign.center,
-                              maxLines: 1),
+                          GestureDetector(
+                            onTap: track.artistId != null
+                                ? () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => AddonDetailScreen(
+                                          id: track.artistId!,
+                                          type: AddonDetailType.artist,
+                                          addonId: track.addonId ?? '',
+                                          initialTitle: track.artist,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                : null,
+                            child: Text(track.artist,
+                                style: TextStyle(
+                                  color: secondaryColor,
+                                  fontSize: artistFontSize,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 30),
+                      SizedBox(height: sectionSpacing),
 
                       // Progress
                       Column(
@@ -782,6 +886,35 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                   isScrollControlled: true,
                                   backgroundColor: Colors.transparent,
                                   builder: (_) => const LyricsScreen());
+                            },
+                          ),
+                          // Relocated Heart Button
+                          Consumer<LocalLibraryService>(
+                            builder: (context, localLibrary, child) {
+                              final isFav = localLibrary.isFavourite(track.id);
+                              return Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? Colors.white.withOpacity(0.05)
+                                      : Colors.black.withOpacity(0.05),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  icon: Icon(isFav
+                                      ? Icons.favorite
+                                      : Icons.favorite_border),
+                                  color: isFav
+                                      ? AppTheme.primaryGreen
+                                      : secondaryColor,
+                                  iconSize: 32,
+                                  onPressed: () {
+                                    localLibrary.toggleFavourite(track,
+                                        addonService:
+                                            context.read<AddonService>());
+                                  },
+                                ),
+                              );
                             },
                           ),
                           TextButton.icon(

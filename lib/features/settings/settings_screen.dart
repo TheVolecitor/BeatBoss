@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
-import '../../core/services/dab_api_service.dart';
 import '../../core/services/last_fm_service.dart';
-
-// For platform check
+import '../addons/addons_screen.dart';
 
 /// Settings Screen - theme toggle, download management, cache clearing
 class SettingsScreen extends StatefulWidget {
@@ -19,35 +16,19 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String? _downloadLocation;
-  int? _storageSize;
-  int? _downloadedCount;
-
   @override
   void initState() {
     super.initState();
-    _loadSettingsInfo();
   }
 
   Future<void> _loadSettingsInfo() async {
-    final settings = context.read<SettingsService>();
-
-    final location = await settings.getDownloadLocation();
-    final size = await settings.getStorageSize();
-    final count = settings.downloadedCount;
-
-    setState(() {
-      _downloadLocation = location;
-      _storageSize = size;
-      _downloadedCount = count;
-    });
+    // Info is now handled via context.watch or FutureBuilder
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final downloadManager = context.watch<DownloadManagerService>();
-    final api = context.watch<DabApiService>();
     final isDark = settings.isDarkMode;
 
     return SingleChildScrollView(
@@ -66,6 +47,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+
+          // Addons Section
+          _SettingsSection(
+            title: 'Addons',
+            isDark: isDark,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.extension_outlined),
+                title: const Text('Manage Addons'),
+                subtitle: const Text('Install and configure extensions'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const Scaffold(body: SafeArea(child: AddonsScreen()))));
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
 
           // Appearance Section
           _SettingsSection(
@@ -146,61 +146,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 20),
 
-          // About & Account
+          // About
           _SettingsSection(
-            title: 'About & Account',
+            title: 'About',
             isDark: isDark,
-            children: [
+            children: const [
               ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('Version'),
-                subtitle: Text('${DabApiService.APP_VERSION} (Flutter)'),
-                trailing: api.updateAvailable
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryGreen,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text(
-                          'Update Available',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              if (api.updateAvailable)
-                ListTile(
-                  leading: const Icon(Icons.system_update,
-                      color: AppTheme.primaryGreen),
-                  title: Text('New Version Available: ${api.latestVersion}'),
-                  subtitle: const Text('Tap to download the latest update'),
-                  onTap: () {
-                    if (api.updateUrl != null) {
-                      _showUpdateDialog(api.updateUrl!, api.latestVersion!);
-                    }
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text('Sign Out',
-                    style: TextStyle(
-                        color: Colors.red, fontWeight: FontWeight.w600)),
-                onTap: () async {
-                  final api = context.read<DabApiService>();
-                  final set = context.read<SettingsService>();
-                  api.clearUser();
-                  await set.clearUser();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Logged out successfully')));
-                  }
-                },
+                leading: Icon(Icons.info_outline),
+                title: Text('Version'),
+                subtitle: Text('1.8.5 (Flutter)'),
               ),
             ],
           ),
@@ -218,37 +172,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
-
-  void _showUpdateDialog(String url, String version) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Update to v$version?'),
-        content: Text(
-            'A new version of BeatBoss is available ($version).\n\nWould you like to go to the download page?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: Colors.black,
-            ),
-            onPressed: () async {
-              final uri = Uri.parse(url);
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text('Update Now'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _clearCache() {
@@ -318,7 +241,7 @@ class _SettingsSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -334,7 +257,7 @@ class _SettingsSection extends StatelessWidget {
                     endIndent: 20,
                     color: isDark
                         ? Colors.white10
-                        : Colors.black.withOpacity(0.05),
+                        : Colors.black.withValues(alpha: 0.05),
                   ),
                 children[i],
               ],

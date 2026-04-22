@@ -79,7 +79,7 @@ class QueueScreen extends StatelessWidget {
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
                           color: isPlaying
-                              ? AppTheme.primaryGreen.withOpacity(0.2)
+                              ? AppTheme.primaryGreen.withValues(alpha: 0.2)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                         ),

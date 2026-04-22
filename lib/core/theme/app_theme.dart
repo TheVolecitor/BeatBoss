@@ -53,7 +53,7 @@ class AppTheme {
         activeTrackColor: primaryGreen,
         inactiveTrackColor: Colors.white10,
         thumbColor: primaryGreen,
-        overlayColor: primaryGreen.withOpacity(0.2),
+        overlayColor: primaryGreen.withValues(alpha: 0.2),
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
         trackHeight: 4,
       ),
@@ -79,7 +79,7 @@ class AppTheme {
         hintStyle: const TextStyle(color: Colors.white30),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: darkCard.withOpacity(0.95),
+        backgroundColor: darkCard.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       ),
       snackBarTheme: SnackBarThemeData(
@@ -135,7 +135,7 @@ class AppTheme {
         activeTrackColor: primaryGreen,
         inactiveTrackColor: Colors.black12,
         thumbColor: primaryGreen,
-        overlayColor: primaryGreen.withOpacity(0.2),
+        overlayColor: primaryGreen.withValues(alpha: 0.2),
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
         trackHeight: 4,
       ),
@@ -161,7 +161,7 @@ class AppTheme {
         hintStyle: const TextStyle(color: Colors.black38),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: lightCard.withOpacity(0.95),
+        backgroundColor: lightCard.withValues(alpha: 0.95),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       ),
       snackBarTheme: SnackBarThemeData(

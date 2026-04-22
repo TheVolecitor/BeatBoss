@@ -4,10 +4,11 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/youtube_service.dart';
 import '../../core/services/spotify_service.dart';
-import '../../core/services/dab_api_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/import_service.dart';
+import '../../core/services/addon_service.dart';
 import '../../core/models/models.dart';
+import '../../core/services/local_library_service.dart';
 
 class ImportItem {
   final String id;
@@ -114,11 +115,13 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
       _step = 3;
     });
 
-    final api = context.read<DabApiService>();
+    final addonService = context.read<AddonService>();
     final importService = context.read<ImportService>();
+    final localLibraryService = context.read<LocalLibraryService>();
 
     importService.startImport(
-      api: api,
+      addonService: addonService,
+      localLibraryService: localLibraryService,
       libraryId: libraryId,
       tracks: selectedTracks,
     ).then((_) {
@@ -229,13 +232,16 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
 
       case 2: // Library Selection
         return FutureBuilder<List<MusicLibrary>>(
-          future: context.read<DabApiService>().getLibraries(),
+          future: context.read<AddonService>().getLibraries(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            final libs = snapshot.data!;
-            if (libs.isEmpty) {
+            
+            final cloudLibs = snapshot.data ?? [];
+            final localLibs = context.read<LocalLibraryService>().getLibraries();
+            
+            if (cloudLibs.isEmpty && localLibs.isEmpty) {
               return const Center(child: Text('No libraries found.'));
             }
 
@@ -245,18 +251,56 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: libs.length,
-                    itemBuilder: (context, index) {
-                      final lib = libs[index];
-                      return ListTile(
-                        leading: const Icon(Icons.library_music,
-                            color: AppTheme.primaryGreen),
-                        title: Text(lib.name),
-                        onTap: () => _startImport(lib.id),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      );
-                    },
+                  child: ListView(
+                    children: [
+                      if (localLibs.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                          child: Text('LOCAL LIBRARIES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                        ),
+                        ...localLibs.map((lib) => ListTile(
+                              leading: const Icon(Icons.folder, color: AppTheme.primaryGreen),
+                              title: Text(lib.name),
+                              onTap: () => _startImport(lib.id),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            )),
+                      ],
+                      if (cloudLibs.isNotEmpty) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                          child: Text('CLOUD LIBRARIES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                        ),
+                        ...cloudLibs.map((lib) => ListTile(
+                              leading: const Icon(Icons.cloud, color: AppTheme.primaryGreen),
+                              title: Text(lib.name),
+                              onTap: () => _startImport(lib.id),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            )),
+                      ],
+                      const Divider(),
+                      ListTile(
+                        leading: const Icon(Icons.add_circle_outline, color: AppTheme.primaryGreen),
+                        title: const Text('Create New Local Library'),
+                        onTap: () async {
+                          final nameController = TextEditingController();
+                          final name = await showDialog<String>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('New Library Name'),
+                              content: TextField(controller: nameController, autofocus: true),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                                TextButton(onPressed: () => Navigator.pop(context, nameController.text), child: const Text('Create')),
+                              ],
+                            ),
+                          );
+                          if (name != null && name.isNotEmpty) {
+                             final newLib = await context.read<LocalLibraryService>().createLibrary(name);
+                             _startImport(newLib.id);
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -280,12 +324,17 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                   minHeight: 10,
                 ),
                 const SizedBox(height: 10),
-                Text('${importService.importedCount} / ${importService.totalTracks}'),
+                Text('${importService.importedCount} / ${importService.totalTracks} matched'),
                 const SizedBox(height: 20),
-                Text(importService.statusMessage,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
+                if (importService.statusMessage == 'Done!') ...[
+                  const Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 48),
+                  const SizedBox(height: 10),
+                  const Text('Import Complete!', style: TextStyle(fontWeight: FontWeight.bold)),
+                ] else
+                  Text(importService.statusMessage,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
               ],
             );
           },

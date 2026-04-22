@@ -3,7 +3,7 @@ import 'package:audio_service/audio_service.dart';
 import 'dart:async';
 
 import '../models/models.dart';
-import 'dab_api_service.dart';
+import 'addon_service.dart';
 import 'audio_handler.dart';
 import 'history_service.dart';
 import 'last_fm_service.dart';
@@ -12,7 +12,7 @@ import 'discord_rpc_service.dart';
 
 class AudioPlayerService with ChangeNotifier {
   final AppAudioHandler _handler;
-  final DabApiService _dabApiService;
+  final AddonService _addonService;
 
   // Local state mirrored from Handler
   Track? _currentTrack;
@@ -81,12 +81,12 @@ class AudioPlayerService with ChangeNotifier {
 
   AudioPlayerService({
     required AppAudioHandler handler,
-    required DabApiService dabApiService,
+    required AddonService addonService,
     required HistoryService historyService,
     required LastFmService lastFmService,
     required DiscordRpcService discordRpcService,
   })  : _handler = handler,
-        _dabApiService = dabApiService,
+        _addonService = addonService,
         _historyService = historyService,
         _lastFmService = lastFmService,
         _discordRpcService = discordRpcService {
@@ -317,7 +317,16 @@ class AudioPlayerService with ChangeNotifier {
     notifyListeners();
 
     try {
-      final lrcText = await _dabApiService.getLyrics(track.artist, track.title);
+      final lrcText = await _addonService.getLyrics(
+        track.artist, 
+        track.title, 
+        album: track.albumTitle,
+        duration: track.duration,
+        addonId: track.addonId ?? 'net.lrclib',
+
+
+      );
+
       if (lrcText != null) {
         _lyrics = _parseLrc(lrcText);
       } else {

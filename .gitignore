@@ -38,3 +38,6 @@ lib/core/services/spotify_service.dart
 /android/.gradle/
 /android/app/build/
 /build/
+
+# Remote Server
+dab-sync-server/

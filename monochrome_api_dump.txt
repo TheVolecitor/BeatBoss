@@ -1,0 +1,337 @@
+--- GET https://monochrome.tf/ ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/index-FWKUfMlp.js ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/index-XjfoAduQ.css ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/manifest.json ---
+Response 200:
+
+
+--- GET https://auth.monochrome.tf/v1/account ---
+Response 200:
+
+
+--- GET https://monochrome.tf/lib/butterchurnPresets.min.js ---
+Response 200:
+
+
+--- OPTIONS https://auth.monochrome.tf/v1/account ---
+Response 204:
+
+
+--- GET https://monochrome.tf/assets/settings-DOcCr08T.js ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/logo.svg ---
+Response 200:
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="14.75 14.75 70.5 70.5" >
+  <g fill="white" >
+    <path d="M38.25 14.75H85.25V61.75H61.75V38.25H38.25ZM14.75 38.25H38.25V61.75H61.75V85.25H14.75Z"  />
+  </g>
+</svg>
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/editors-picks.json ---
+Response 200:
+
+
+--- GET https://api.monochrome.tf/artist/similar/?id=12979 ---
+Response 200:
+
+
+--- GET https://api.monochrome.tf/artist/?id=3953716 ---
+Response 200:
+
+
+--- GET https://api.monochrome.tf/artist/?id=3529900 ---
+Response 200:
+
+
+--- GET https://us-west.monochrome.tf/artist/?id=4703281 ---
+Response 200:
+
+
+--- GET https://api.monochrome.tf/artist/?f=3995478&skip_tracks=true ---
+Response 200:
+
+
+--- GET https://api.monochrome.tf/artist/?id=5053389 ---
+Response 200:
+
+
+--- GET https://api.monochrome.tf/artist/?f=4989822&skip_tracks=true ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/workbox-window.prod.es5-BIl4cyR9.js ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/logo.svg ---
+Response 200:
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="14.75 14.75 70.5 70.5" >
+  <g fill="white" >
+    <path d="M38.25 14.75H85.25V61.75H61.75V38.25H38.25ZM14.75 38.25H38.25V61.75H61.75V85.25H14.75Z"  />
+  </g>
+</svg>
+
+--- DELETE https://auth.monochrome.tf/v1/account/sessions/current ---
+Payload: {}
+Response 204:
+
+
+--- OPTIONS https://auth.monochrome.tf/v1/account/sessions/current ---
+Response 204:
+
+
+--- GET https://monochrome.tf/album/104823204 ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/index-FWKUfMlp.js ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/index-XjfoAduQ.css ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/manifest.json ---
+Response 200:
+
+
+--- GET https://auth.monochrome.tf/v1/account ---
+Response 404:
+
+
+--- GET https://monochrome.tf/lib/butterchurnPresets.min.js ---
+Response 200:
+
+
+--- OPTIONS https://auth.monochrome.tf/v1/account ---
+Response 204:
+
+
+--- GET https://monochrome.tf/assets/settings-DOcCr08T.js ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/logo.svg ---
+Response 200:
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="14.75 14.75 70.5 70.5" >
+  <g fill="white" >
+    <path d="M38.25 14.75H85.25V61.75H61.75V38.25H38.25ZM14.75 38.25H38.25V61.75H61.75V85.25H14.75Z"  />
+  </g>
+</svg>
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/assets/logo.svg ---
+Response 200:
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="14.75 14.75 70.5 70.5" >
+  <g fill="white" >
+    <path d="M38.25 14.75H85.25V61.75H61.75V38.25H38.25ZM14.75 38.25H38.25V61.75H61.75V85.25H14.75Z"  />
+  </g>
+</svg>
+
+--- GET https://api.monochrome.tf/search/?v=Hans%20Zimmer ---
+Response 200:
+
+
+--- GET https://monochrome.tf/assets/workbox-window.prod.es5-BIl4cyR9.js ---
+Response 200:
+
+
+--- POST https://auth.monochrome.tf/v1/account/sessions/email ---
+Payload: {"email":"thevolecitor+sms@gmail.com","password":"Nisha@11"}
+Response 201:
+
+
+--- OPTIONS https://auth.monochrome.tf/v1/account/sessions/email ---
+Response 204:
+
+
+--- GET https://auth.monochrome.tf/v1/account ---
+Response 200:
+
+
+--- OPTIONS https://auth.monochrome.tf/v1/account ---
+Response 204:
+
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/settings ---
+Response 200:
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Monochrome Music</title>
+        <meta name="theme-color" content="#000000" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <base href="/" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Monochrome" />
+        <meta name="description" content="A minimalist music streaming application" />
+
+        <!-- Preconnect to critical third-party origins -->
+        <link rel="preconnect" href="https://api.fonts.coollabs.io" crossorigin />
+        <link rel="preconnect" href="https://ws.audioscrobbler.com" crossorigin />
+        <link rel="preconnect" href="https://libre.fm" crossorigin />
+        <link rel="preconnect" href="https://api
+
+--- GET https://monochrome.tf/assets/index-FWKUfMlp.js ---
+Response 200:
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./desktop-Zf4EYx5R.js","./neutralino-bridge-C2v9jaJt.js"])))=>i.map(i=>d[i]);
+(function(){const e=document.createElement("link").relList;if(e&&e.supports&&e.supports("modulepreload"))return;for(const i of document.querySelectorAll('link[rel="modulepreload"]'))n(i);new MutationObserver(i=>{for(const o of i)if(o.type==="childList")for(const l of o.addedNodes)l.tagName==="LINK"&&l.rel==="modulepreload"&&n(l)}).observe(document,{childList:!0,subtree:!0});function t(i){const o={};return i.integrity&&(o.integrity=i.integrity),i.referrerPolicy&&(o.referrerPolicy=i.referrerPolicy),i.crossOrigin==="use-credentials"?o.credentials="include":i.crossOrigin==="anonymous"?o.credentials="omit":o.credentials="same-origin",o}function n(i){if(i.ep)return;i.ep=!0;const o=t(i);fetch(i.href,o)}})();const DS="modulepreload",MS=function(r,e){return new URL(r,e).href},Og={},fi=function(e,t,n){let i=Promise.resolve();if(t&&t.length>0){let d=function(m){r
+
+--- GET https://monochrome.tf/assets/index-XjfoAduQ.css ---
+Response 200:
+OnJvb3R7Y29sb3Itc2NoZW1lOmxpZ2h0IGRhcms7LS1mb250LWZhbWlseTogIkludGVyIiwgLWFwcGxlLXN5c3RlbSwgYmxpbmttYWNzeXN0ZW1mb250LCAiU2Vnb2UgVUkiLCByb2JvdG8sIHNhbnMtc2VyaWY7LS1mb250LXNpemUtc2NhbGU6IDEwMCU7LS10ZXh0LXhzOiAuNzVyZW07LS10ZXh0LXNtOiAuODc1cmVtOy0tdGV4dC1iYXNlOiAxcmVtOy0tdGV4dC1tZDogMS4xMjVyZW07LS10ZXh0LWxnOiAxLjI1cmVtOy0tdGV4dC14bDogMS41cmVtOy0tdGV4dC0yeGw6IDEuODc1cmVtOy0tdGV4dC0zeGw6IDIuMjVyZW07LS10ZXh0LTR4bDogM3JlbTstLXRleHQtNXhsOiAzLjc1cmVtOy0tZm9udC1ub3JtYWw6IDQwMDstLWZvbnQtbWVkaXVtOiA1MDA7LS1mb250LXNlbWlib2xkOiA2MDA7LS1mb250LWJvbGQ6IDcwMDstLWxlYWRpbmctbm9uZTogMTstLWxlYWRpbmctdGlnaHQ6IDEuMjU7LS1sZWFkaW5nLXNudWc6IDEuMzc1Oy0tbGVhZGluZy1ub3JtYWw6IDEuNTstLWxlYWRpbmctcmVsYXhlZDogMS42MjU7LS1zcGFjZS0wOiAwOy0tc3BhY2UtMTogLjI1cmVtOy0tc3BhY2UtMjogLjVyZW07LS1zcGFjZS0zOiAuNzVyZW07LS1zcGFjZS00OiAxcmVtOy0tc3BhY2UtNTogMS4yNXJlbTstLXNwYWNlLTY6IDEuNXJlbTstLXNwYWNlLTg6IDJyZW07LS1zcGFjZS0xMDogMi41cmVtOy0tc3BhY2UtMTI6IDNyZW07LS1zcGFjZS0xNjogNHJlbTstLXNwYWNlLTIwOiA1cmVtOy0tc3BhY2UtMjQ6IDZyZW07LS1zcGFjaW5n
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/manifest.json ---
+Response 200:
+{
+    "name": "Monochrome Music",
+    "short_name": "Monochrome",
+    "description": "A minimalist music streaming application",
+    "start_url": "./",
+    "display": "standalone",
+    "display_override": ["window-controls-overlay"],
+    "background_color": "#000000",
+    "theme_color": "#000000",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "assets/appicon.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "assets/appicon.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "assets/appicon.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "categories": ["music", "entertainment"],
+    "shortcuts": [
+        {
+            "name": "Search",
+            "short_name": "Search",
+            "description": 
+
+--- GET https://auth.monochrome.tf/v1/account ---
+Response 200:
+{"$id":"69b77f5bb2b975bd1950","$createdAt":"2026-03-16T03:56:11.732+00:00","$updatedAt":"2026-03-16T03:56:11.732+00:00","name":"","registration":"2026-03-16T03:56:11.732+00:00","status":true,"labels":[],"passwordUpdate":"2026-03-16T03:56:11.732+00:00","email":"thevolecitor+sms@gmail.com","phone":"","emailVerification":false,"phoneVerification":false,"mfa":false,"prefs":{},"targets":[{"$id":"69b77f5bb698c78c021e","$createdAt":"2026-03-16T03:56:11.747+00:00","$updatedAt":"2026-03-16T03:56:11.747+00:00","name":"","userId":"69b77f5bb2b975bd1950","providerId":null,"providerType":"email","identifier":"thevolecitor+sms@gmail.com","expired":false}],"accessedAt":"2026-03-16T03:56:11.732+00:00"}
+
+--- OPTIONS https://auth.monochrome.tf/v1/account ---
+Response 204:
+
+
+--- GET https://monochrome.tf/lib/butterchurnPresets.min.js ---
+Response 200:
+!function(a,e){"object"==typeof exports&&"object"==typeof module?module.exports=e():"function"==typeof define&&define.amd?define("butterchurnPresets",[],e):"object"==typeof exports?exports.butterchurnPresets=e():a.butterchurnPresets=e()}("undefined"!=typeof self?self:this,function(){return function(a){var e={};function t(r){if(e[r])return e[r].exports;var n=e[r]={i:r,l:!1,exports:{}};return a[r].call(n.exports,n,n.exports,t),n.l=!0,n.exports}return t.m=a,t.c=e,t.d=function(a,e,r){t.o(a,e)||Object.defineProperty(a,e,{configurable:!1,enumerable:!0,get:r})},t.n=function(a){var e=a&&a.__esModule?function(){return a.default}:function(){return a};return t.d(e,"a",e),e},t.o=function(a,e){return Object.prototype.hasOwnProperty.call(a,e)},t.p="",t(t.s=165)}([function(a,e,t){a.exports=!t(5)(function(){return 7!=Object.defineProperty({},"a",{get:function(){return 7}}).a})},function(a,e){a.exports=function(a){return"object"==typeof a?null!==a:"function"==typeof a}},function(a,e){var t=a.exports="u
+
+--- GET https://monochrome.tf/assets/settings-DOcCr08T.js ---
+Response 200:
+import{s as ta,a as Oe,l as A,b as De,m as Ne,c as at,t as _e,d as Os,e as ga,f as Wn,g as fa,h as Ds,i as Ns,q as _s,j as Gs,k as he,p as _,r as At,n as $s,o as B,u as js,v as Ge,w as r,E as Hs,x as Vs,y as Qs,z as Tt,A as Pt,B as Ws,C as Js,D as Ks,F as Ys,G as M,H as Z,I as u,J as pa,K as Jn,L as Xs,M as Zs,N as ea,O as U,P as ve}from"./index-FWKUfMlp.js";function Ia(l,g,w,L){const le=ta.getActiveTab(),P=document.querySelector(`.settings-tab[data-tab="${le}"]`);P&&(document.querySelectorAll(".settings-tab").forEach(e=>e.classList.remove("active")),document.querySelectorAll(".settings-tab-content").forEach(e=>e.classList.remove("active")),P.classList.add("active"),document.getElementById(`settings-tab-${le}`)?.classList.add("active")),Oe.updateUI(Oe.user);const W=document.getElementById("toggle-email-auth-btn"),J=document.getElementById("cancel-email-auth-btn"),x=document.getElementById("email-auth-modal"),H=document.getElementById("auth-email"),C=document.getElementById("auth-passwo
+
+--- GET https://monochrome.tf/assets/workbox-window.prod.es5-BIl4cyR9.js ---
+Response 200:
+try{self["workbox:window:7.3.0"]&&_()}catch{}function b(n,r){return new Promise((function(t){var o=new MessageChannel;o.port1.onmessage=function(f){t(f.data)},n.postMessage(r,[o.port2])}))}function P(n,r){(r==null||r>n.length)&&(r=n.length);for(var t=0,o=Array(r);t<r;t++)o[t]=n[t];return o}function j(n,r){for(var t=0;t<r.length;t++){var o=r[t];o.enumerable=o.enumerable||!1,o.configurable=!0,"value"in o&&(o.writable=!0),Object.defineProperty(n,W(o.key),o)}}function S(n,r){var t=typeof Symbol<"u"&&n[Symbol.iterator]||n["@@iterator"];if(t)return(t=t.call(n)).next.bind(t);if(Array.isArray(n)||(t=(function(f,c){if(f){if(typeof f=="string")return P(f,c);var a={}.toString.call(f).slice(8,-1);return a==="Object"&&f.constructor&&(a=f.constructor.name),a==="Map"||a==="Set"?Array.from(f):a==="Arguments"||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(a)?P(f,c):void 0}})(n))||r){t&&(n=t);var o=0;return function(){return o>=n.length?{done:!0}:{done:!1,value:n[o++]}}}throw new TypeError(`Invalid at
+
+--- GET https://monochrome.tf/assets/logo.svg ---
+Response 200:
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="14.75 14.75 70.5 70.5" >
+  <g fill="white" >
+    <path d="M38.25 14.75H85.25V61.75H61.75V38.25H38.25ZM14.75 38.25H38.25V61.75H61.75V85.25H14.75Z"  />
+  </g>
+</svg>
+
+--- GET https://monochrome.tf/assets/appicon.png ---
+Response 200:
+iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAYAAAB/HSuDAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAAYdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuOWxu2j4AAAC2ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEAAAAFoAAABphwQAAQAAAGoAAAAAAAAADHcBAOgDAAAMdwEA6AMAAFBhaW50Lk5FVCA1LjEuOQADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlAAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAABL8BtoKZm72AAAG0tJREFUeF7t3LGKFOkagOG/7RbWkUkMVFCMDAUzkTERMTH0YrwIL8DEezAUMVcHMdJAEExMNFMYUQRnnGOvdcBk97hwoGt9nweK+f9v0mq6662uXowxDr8fAAAAwG/syPQXAAAA+I0JAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQIAAAAABAgAAAAAAAAQIAAAAABAgAAAAAECAAAAAAQIAAAAAAAAECAAAAAAQIAAAAABAgAAAAAECAAAAAAAABAgAAAAAECAAAAAAQ
+
+--- GET https://monochrome.tf/editors-picks.json ---
+Response 200:
+[
+    {
+        "type": "album",
+        "id": 89313048,
+        "title": "DAYTONA",
+        "artist": { "id": 3972883, "name": "Pusha T" },
+        "releaseDate": "2018-05-25",
+        "cover": "30288caf-2bdd-4511-a95c-57117936b2b6",
+        "explicit": true,
+        "audioQuality": "LOSSLESS",
+        "mediaMetadata": { "tags": ["LOSSLESS", "HIRES_LOSSLESS"] }
+    },
+    {
+        "type": "album",
+        "id": 324660713,
+        "title": "JOECHILLWORLD",
+        "artist": { "id": 3972883, "name": "Devon Hendryx" },
+        "releaseDate": "2010-08-10",
+        "cover": "25d45544-3e82-4184-b8c2-2c2c6f0f152a",
+        "explicit": true,
+        "audioQuality": "LOSSLESS",
+        "mediaMetadata": { "tags": ["LOSSLESS", "HIRES_LOSSLESS"] }
+    },
+    {
+        "type": "album",
+        "id": 418729278,
+        "title": "I LAY DOWN MY LIFE FOR YOU: DIRECTOR'S CUT",
+        "artist": { "id": 7958797, "name": "JPEGMAFIA" },
+        "releaseDate": "2025-02-03",
+        "cover": "9c84302b-2584
+
+--- GET https://eu-central.monochrome.tf/artist/?f=25022&skip_tracks=true ---
+Response 200:
+{"version":"2.6","albums":{"items":[{"id":440425318,"title":"DONDA 2","duration":3490,"streamReady":true,"payToStream":false,"adSupportedStreamReady":true,"djReady":true,"stemReady":false,"streamStartDate":"2025-06-06T00:00:00.000+0000","allowStreaming":true,"premiumStreamingOnly":false,"numberOfTracks":21,"numberOfVideos":0,"numberOfVolumes":1,"releaseDate":"2025-05-10","copyright":"2025 YZY","type":"ALBUM","version":null,"url":"http://www.tidal.com/album/440425318","cover":"e7a15eaf-494a-4535-ae0e-25f7221ba527","vibrantColor":null,"videoCover":null,"explicit":true,"upc":"0692788674308","popularity":68,"audioQuality":"LOSSLESS","audioModes":["STEREO"],"mediaMetadata":{"tags":["LOSSLESS","HIRES_LOSSLESS"]},"upload":false,"artist":{"id":5775484,"name":"Donda","handle":null,"type":"MAIN","picture":null},"artists":[{"id":5775484,"name":"Donda","handle":null,"type":"MAIN","picture":null},{"id":25022,"name":"Kanye West","handle":null,"type":"MAIN","picture":"0948decd-5591-4b83-b188-8314bfbe
+
+--- GET https://api.monochrome.tf/artist/?id=3669125 ---
+Response 200:
+{"version":"2.5","artist":{"id":3669125,"name":"Camélia Jordana","artistTypes":["ARTIST","CONTRIBUTOR"],"url":"http://www.tidal.com/artist/3669125","picture":"b44dc004-265e-4718-a07e-c3ee7b9307dc","selectedAlbumCoverFallback":null,"popularity":54,"artistRoles":[{"categoryId":-1,"category":"Artist"},{"categoryId":2,"category":"Songwriter"},{"categoryId":11,"category":"Performer"},{"categoryId":1,"category":"Producer"},{"categoryId":10,"category":"Production team"},{"categoryId":99,"category":"Misc"}],"mixes":{"ARTIST_MIX":"000ed9b04e88f2a711f258e8acd22a"},"handle":null,"userId":null,"spotlighted":false},"cover":{"id":3669125,"name":"Camélia Jordana","750":"https://resources.tidal.com/images/b44dc004/265e/4718/a07e/c3ee7b9307dc/750x750.jpg"}}
+
+--- GET https://eu-central.monochrome.tf/artist/?f=3669125&skip_tracks=true ---
+Response 200:
+{"version":"2.6","albums":{"items":[{"id":300977212,"title":"facile x fragile +","duration":6693,"streamReady":true,"payToStream":false,"adSupportedStreamReady":true,"djReady":true,"stemReady":false,"streamStartDate":"2023-06-29T18:00:00.000+0000","allowStreaming":true,"premiumStreamingOnly":false,"numberOfTracks":30,"numberOfVideos":0,"numberOfVolumes":3,"releaseDate":"2023-06-30","copyright":"(C) 2023 Dhaouw Productions / Indifférence Prod / Play Two distributed by Sony Music Entertainment France SAS","type":"ALBUM","version":null,"url":"http://www.tidal.com/album/300977212","cover":"ef5b851b-0cee-4011-96ae-e309105684af","vibrantColor":"#ecc881","videoCover":null,"explicit":false,"upc":"196871240635","popularity":21,"audioQuality":"LOSSLESS","audioModes":["STEREO"],"mediaMetadata":{"tags":["LOSSLESS","HIRES_LOSSLESS"]},"upload":false,"artist":{"id":3669125,"name":"Camélia Jordana","handle":null,"type":"MAIN","picture":"b44dc004-265e-4718-a07e-c3ee7b9307dc"},"artists":[{"id":3669125,"
+

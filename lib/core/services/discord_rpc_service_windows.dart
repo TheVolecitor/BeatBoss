@@ -136,7 +136,7 @@ class DiscordRpcServiceWindows implements DiscordRpcService {
       data[0] = opcode; // Little endian by default on Windows/x86/x64
       data[1] = length;
 
-      final payloadPtr = buffer.elementAt(8);
+      final payloadPtr = buffer + 8;
       for (var i = 0; i < length; i++) {
         payloadPtr[i] = jsonBytes[i];
       }

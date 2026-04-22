@@ -1,54 +1,49 @@
 # BeatBoss
 
-BeatBoss is a high-performance, cross-platform music player client designed for audiophiles. Built with Flutter, it delivers a native, responsive experience on both Windows and Android.
+BeatBoss is a high performance cross platform music player client designed for audiophiles. Built with Flutter, it delivers a native, responsive experience on both Windows and Android.
 
-> **Note**: This project has been migrated from Flet (Python) to Flutter to resolve stability issues and ensure a robust, native performance across platforms.
-
+Note: This project has been migrated from Flet (Python) to Flutter to resolve stability issues and ensure a robust, native performance across platforms.
 
 ## Features
 
-- **Cross-Platform**: Seamless experience on Windows, Linux and Android.
-- **High-Quality Playback**
-- **Local Downloads**: Download tracks for offline listening with high-quality metadata.
-- **Last.fm Integration**: 
-  - Full scrobbling support.
-  - Secure API signing (defaults to a private Cloudflare worker, but can be configured for personal use).
-- **Modern UI**:
-  - Dark/Light mode support.
-  - Adaptive layouts (Responsive Dashboard on Desktop, Bottom Navigation on Mobile).
-  - "Snappable" player pane and lyrics sheet.
-- **Smart Queue**: Drag-and-drop reordering, history tracking mode.
+- Cross Platform: Seamless experience on Windows, Linux and Android.
+- High Quality Playback: Support for various stream formats and high resolution audio.
+- Local Downloads: Download tracks for offline listening with high quality metadata.
+- Last.fm Integration: Full scrobbling support and secure API signing.
+- Modern UI: Dark and Light mode support with adaptive layouts.
+- Smart Queue: Drag and drop reordering and history tracking.
+- Addon System: Extensible architecture for search, lyrics, and cloud synchronization.
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (Latest Stable)
-- [Git](https://git-scm.com/)
-- **Windows**: Visual Studio 2022 with C++ Desktop Development workload.
-- **Android**: Android Studio with SDK Command-line Tools.
+- Flutter SDK (Latest Stable)
+- Git
+- Windows: Visual Studio 2022 with C++ Desktop Development workload.
+- Android: Android Studio with SDK Command line Tools.
 
 ### Installation
 
-1. **Clone the repository**
+1. Copy the repository:
    ```bash
    git clone https://github.com/TheVolecitor/BeatBoss.git
    cd BeatBoss
    ```
 
-2. **Install Dependencies**
+2. Install dependencies:
    ```bash
    flutter pub get
    ```
 
-3. **Run the Application**
+3. Run the application:
 
-   *Windows:*
+   Windows:
    ```bash
    flutter run -d windows
    ```
 
-   *Android:*
+   Android:
    ```bash
    flutter run -d android
    ```
@@ -59,55 +54,29 @@ BeatBoss is a high-performance, cross-platform music player client designed for 
 ```bash
 flutter build windows
 ```
-The output can be found in `build/windows/runner/Release/`.
+The output can be found in build/windows/runner/Release/.
 
 ### Android (.apk)
 ```bash
 flutter build apk --release
 ```
-The output `app-release.apk` will be in `build/app/outputs/flutter-apk/`.
+The output app-release.apk will be in build/app/outputs/flutter-apk/.
 
-### Linux (AppImage / .deb)
+## Addon Development
 
-**Prerequisites**:
-- Linux environment (Ubuntu 20.04+ recommended).
-- Dependencies: `clang`, `cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `liblzma-dev`.
+The application supports a flexible addon system for extending its functionality. You can develop your own addons to provide new search sources, lyrics providers, or custom library synchronization servers.
 
-**1. Enable Linux Support** (Run once if `linux/` folder is missing)
-```bash
-flutter create --platforms=linux .
-```
-
-**2. Build Release Bundle**
-```bash
-flutter build linux
-```
-
-**3. Packaging (AppImage / .deb)**
-We recommend using [flutter_distributor](https://pub.dev/packages/flutter_distributor).
-
-Install the tool:
-```bash
-dart pub global activate flutter_distributor
-```
-
-Generate release:
-```bash
-flutter_distributor package --platform linux --targets appimage,deb
-```
-Outputs will be in `dist/`.
-
+For detailed information on how to build and integrate your own addons, please refer to the [Addon Development Guide](ADDONS.md).
 
 ## Configuration
 
-### API Keys & Security
-This project is open-source and **does not include private API keys**.
-- **Spotify/YouTube**: Metadata is fetched via public web scraping; no API keys required.
-- **Last.fm**: Requires a valid API Key and Shared Secret. These can be configured in the Settings UI or by deploying your own signing worker.
+### API Keys and Security
+This project is open source and does not include private API keys.
+- Spotify and YouTube: Metadata is fetched via public web scraping. No API keys are required.
+- Last.fm: Requires a valid API Key and Shared Secret. These can be configured in the Settings UI.
 
 ## License
-MIT License. See `LICENSE` file for details.
+MIT License. See LICENSE file for details.
 
 ## Disclaimer
-BeatBoss is solely a client-side audio player that streams or locally plays audio from the user's own library (remote or local). All rights belong to their respective owners.
-
+BeatBoss is solely a client side audio player that streams or locally plays audio from the user's own library. All rights belong to their respective owners.

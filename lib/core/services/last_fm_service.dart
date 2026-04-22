@@ -131,10 +131,6 @@ class LastFmService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // The structure of this endpoint usually returns { playlist: [ { name, artists: [ { name } ] } ] }
-        // or similar. Let's inspect/adapt based on standard Last.fm player responses.
-        // Usually: { playlist: [ { name: "Title", artists: [ { name: "Artist" } ] } ] }
-
         if (data['playlist'] != null) {
           final tracks = data['playlist'] as List;
           return tracks.map<Map<String, String>>((t) {
@@ -153,7 +149,11 @@ class LastFmService extends ChangeNotifier {
         print('Last.fm Recommendations Error: ${response.statusCode}');
       }
     } catch (e) {
-      print('Last.fm Recommendations Error: $e');
+      if (e.toString().contains('11001') || e.toString().contains('No such host')) {
+        print('[LastFmService] Host resolution failed for recommendations. Last.fm might be unreachable or DNS is failing.');
+      } else {
+        print('Last.fm Recommendations Error: $e');
+      }
     }
     return [];
   }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -8,14 +9,13 @@ import 'package:provider/provider.dart';
 import '../core/theme/app_theme.dart';
 import '../core/services/audio_player_service.dart';
 import '../core/services/settings_service.dart';
-import '../core/services/dab_api_service.dart';
+import '../core/services/addon_service.dart';
 import '../core/services/import_service.dart';
+import '../core/services/navigation_service.dart';
 import 'home/home_screen.dart';
-import 'search/search_screen.dart';
 import 'library/library_screen.dart';
-import 'favorites/favorites_screen.dart';
-import 'downloads/downloads_screen.dart';
 import 'settings/settings_screen.dart';
+import 'search/search_screen.dart';
 import 'player/player_bar.dart';
 
 /// Main App Shell - responsive layout with sidebar + viewport + player bar
@@ -30,6 +30,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   final List<Widget> _screens = [];
+  final GlobalKey<SearchScreenState> _searchKey = GlobalKey<SearchScreenState>();
   late FocusNode _appFocusNode;
 
   // Responsive breakpoint
@@ -43,11 +44,9 @@ class _AppShellState extends State<AppShell> {
 
     _screens.addAll([
       HomeScreen(onNavigate: _onNavTap),
-      const SearchScreen(),
       const LibraryScreen(),
-      const FavoritesScreen(),
-      const DownloadsScreen(),
       const SettingsScreen(),
+      SearchScreen(key: _searchKey, onNavigate: _onNavTap),
     ]);
   }
 
@@ -76,24 +75,25 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onNavTap(int index) {
-    // Restrict access to Search, Library, and Favorites if not logged in
-    final api = context.read<DabApiService>();
-    if (!api.isLoggedIn && (index == 1 || index == 2 || index == 3)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please sign in to access this feature'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
     setState(() {
       _selectedIndex = index;
     });
+    
+    // Auto-focus search field if navigating to search tab
+    if (index == 3) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _searchKey.currentState?.focusSearch();
+      });
+    }
   }
 
   void _handleBack() {
+    final navService = context.read<NavigationService>();
+    if (navService.canGoBack) {
+      navService.handleBack();
+      return;
+    }
+
     if (_selectedIndex != 0) {
       setState(() {
         _selectedIndex = 0;
@@ -157,21 +157,29 @@ class _AppShellState extends State<AppShell> {
             FocusScope.of(context).requestFocus(_appFocusNode);
           }
         },
-        child: Scaffold(
-          backgroundColor:
-              isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
-          body: SafeArea(
-            child: Stack(
+        child: PopScope(
+          canPop: false,
+          onPopInvoked: (didPop) {
+            if (didPop) return;
+            _handleBack();
+          },
+          child: Scaffold(
+            backgroundColor:
+                isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+            body: Stack(
               children: [
                 Column(
                   children: [
-                    // Main content area
+                    // Main content area with SafeArea
                     Expanded(
-                      child: isMobile
-                          ? _buildMobileLayout(isDark)
-                          : _buildDesktopLayout(isDark),
+                      child: SafeArea(
+                        bottom: false, // Don't add padding below content
+                        child: isMobile
+                            ? _buildMobileLayout(isDark)
+                            : _buildDesktopLayout(isDark),
+                      ),
                     ),
-                    // Player bar at bottom
+                    // Player bar at bottom - sits flush
                     const PlayerBar(),
                   ],
                 ),
@@ -179,9 +187,9 @@ class _AppShellState extends State<AppShell> {
                 _buildBackgroundImportOverlay(),
               ],
             ),
+            // Bottom nav for mobile only
+            bottomNavigationBar: isMobile ? _buildBottomNav(isDark) : null,
           ),
-          // Bottom nav for mobile only
-          bottomNavigationBar: isMobile ? _buildBottomNav(isDark) : null,
         ),
       ),
     );
@@ -206,7 +214,7 @@ class _AppShellState extends State<AppShell> {
               width: 300,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.3)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -338,9 +346,7 @@ class _AppShellState extends State<AppShell> {
   List<Widget> _buildNavItems(bool isDark) {
     return [
       _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home', isDark),
-      _buildNavItem(1, Icons.search_outlined, Icons.search, 'Search', isDark),
-      _buildNavItem(2, Icons.library_music_outlined, Icons.library_music,
-          'Library', isDark),
+      _buildNavItem(1, Icons.library_music_outlined, Icons.library_music, 'Library', isDark),
 
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -351,31 +357,17 @@ class _AppShellState extends State<AppShell> {
       _buildActionItem(Icons.add_box_outlined, 'Create Library', isDark,
           onTap: _showCreateLibraryDialog),
 
-      _buildNavItem(
-          3, Icons.favorite_outline, Icons.favorite, 'Liked Songs', isDark),
-      _buildNavItem(4, Icons.offline_pin_outlined, Icons.offline_pin,
-          'Downloads', isDark),
-      _buildNavItem(
-          5, Icons.settings_outlined, Icons.settings, 'Settings', isDark),
+      _buildNavItem(2, Icons.settings_outlined, Icons.settings, 'Settings', isDark),
 
       const Spacer(),
-
-      // Sign Out
-      _buildActionItem(
-        Icons.logout,
-        'Sign Out',
-        isDark,
-        onTap: _handleLogout,
-        color: Colors.red,
-      ),
-
       const SizedBox(height: 20),
     ];
   }
 
   Widget _buildNavItem(int index, IconData icon, IconData activeIcon,
       String label, bool isDark) {
-    final isSelected = _selectedIndex == index;
+    // For search (index 3), we visually highlight Home (index 0)
+    final isSelected = _selectedIndex == index || (_selectedIndex == 3 && index == 0);
 
     return InkWell(
       onTap: () => _onNavTap(index),
@@ -384,7 +376,7 @@ class _AppShellState extends State<AppShell> {
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primaryGreen.withOpacity(0.15)
+              ? AppTheme.primaryGreen.withValues(alpha: 0.15)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
@@ -440,31 +432,14 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _handleLogout() async {
-    final api = context.read<DabApiService>();
-    final settings = context.read<SettingsService>();
 
-    api.clearUser();
-    await settings.clearUser();
-
-    // Reset to Home (which will show Login)
-    if (mounted) {
-      setState(() {
-        _selectedIndex = 0;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Logged out successfully'),
-        backgroundColor: Colors.blue,
-      ));
-    }
-  }
 
   void _showCreateLibraryDialog() {
     final controller = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Row(
           children: [
             Icon(Icons.add_box, color: AppTheme.primaryGreen),
@@ -482,22 +457,25 @@ class _AppShellState extends State<AppShell> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
-                final api = context.read<DabApiService>();
-                final lib = await api.createLibrary(controller.text);
+                final addonService = context.read<AddonService>();
+                final success = await addonService.createLibrary(controller.text);
 
                 if (mounted) {
-                  Navigator.pop(context);
-                  if (lib != null) {
+                  Navigator.pop(dialogContext);
+                  if (success) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('Created library "${lib.name}"')));
+                        content: Text('Created library "${controller.text}"')));
                     // Navigate to Library screen to see it
                     setState(() => _selectedIndex = 2);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Failed to create library. Ensure a Sync Addon is configured.')));
                   }
                 }
               }
@@ -510,36 +488,66 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget? _buildBottomNav(bool isDark) {
+    final activeIndex = _selectedIndex > 2 ? 0 : _selectedIndex;
     return Container(
+      height: 80,
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+        color: isDark ? AppTheme.darkBackground.withOpacity(0.9) : Colors.white.withOpacity(0.9),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+            width: 1,
           ),
-        ],
+        ),
       ),
-      child: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onNavTap,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        selectedItemColor: AppTheme.primaryGreen,
-        unselectedItemColor: isDark ? Colors.white54 : Colors.black45,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.library_music), label: 'Library'),
-          BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'Liked'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.offline_pin), label: 'Downloads'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.settings), label: 'Settings'),
-        ],
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildModernNavItem(0, Icons.home_rounded, Icons.home_rounded, 'Home', activeIndex == 0, isDark),
+                _buildModernNavItem(1, Icons.library_music_rounded, Icons.library_music_rounded, 'Library', activeIndex == 1, isDark),
+                _buildModernNavItem(2, Icons.settings_rounded, Icons.settings_rounded, 'Settings', activeIndex == 2, isDark),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernNavItem(int index, IconData icon, IconData activeIcon, String label, bool isSelected, bool isDark) {
+    final activeColor = AppTheme.primaryGreen;
+    final inactiveColor = isDark ? Colors.white24 : Colors.black26;
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => _onNavTap(index),
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? activeIcon : icon,
+              color: isSelected ? activeColor : inactiveColor,
+              size: 26,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? (isDark ? Colors.white : Colors.black) : inactiveColor,
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

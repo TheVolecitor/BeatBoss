@@ -6,9 +6,14 @@ class Track {
   final String? albumTitle;
   final String? albumCover;
   final String? albumId;
+  final String? artistId;
   final int? duration; // Seconds
   final AudioQuality? audioQuality;
   final Map<String, dynamic>? rawData; // Store original API response for fidelity
+  // Addon tracking — identifies which addon owns this track
+  final String? addonId;
+  final String? addonTrackId; // Original track ID within the addon
+  final String? streamURL; // Pre-resolved stream URL (Eclipse spec optional field)
 
   Track({
     required this.id,
@@ -17,9 +22,13 @@ class Track {
     this.albumTitle,
     this.albumCover,
     this.albumId,
+    this.artistId,
     this.duration,
     this.audioQuality,
     this.rawData,
+    this.addonId,
+    this.addonTrackId,
+    this.streamURL,
   });
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -31,13 +40,20 @@ class Track {
       title: json['title'] ?? 'Unknown Title',
       artist: json['artist'] ?? 'Unknown Artist',
       albumTitle: json['albumTitle'] ?? json['album'],
-      albumCover: json['albumCover'] ?? json['image'] ?? json['cover'],
-      albumId: json['albumId']?.toString(),
-      duration: json['duration'],
+      // Support both DAB field names and Eclipse spec 'artworkURL'
+      albumCover: json['albumCover'] ?? json['artworkURL'] ?? json['image'] ?? json['cover'],
+      albumId: json['albumId']?.toString() ?? json['album_id']?.toString(),
+      artistId: json['artistId']?.toString() ?? json['artist_id']?.toString(),
+      duration: json['duration'] is int
+          ? json['duration']
+          : int.tryParse(json['duration']?.toString() ?? ''),
       audioQuality: json['audioQuality'] != null
           ? AudioQuality.fromJson(json['audioQuality'])
           : null,
       rawData: json,
+      addonId: json['addonId'],
+      addonTrackId: json['addonTrackId'],
+      streamURL: json['streamURL'] ?? json['url'],
     );
   }
 
@@ -49,8 +65,12 @@ class Track {
       'albumTitle': albumTitle,
       'albumCover': albumCover,
       'albumId': albumId,
+      'artistId': artistId,
       'duration': duration,
       'audioQuality': audioQuality?.toJson(),
+      'addonId': addonId,
+      'addonTrackId': addonTrackId,
+      'streamURL': streamURL,
     };
   }
 

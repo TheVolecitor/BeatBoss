@@ -13,19 +13,21 @@ import 'core/theme/app_theme.dart';
 import 'core/services/settings_service.dart';
 import 'core/services/audio_player_service.dart';
 import 'core/services/audio_handler.dart';
-import 'core/services/dab_api_service.dart';
 import 'core/services/download_manager_service.dart';
+import 'core/services/discord_rpc_service.dart';
+import 'core/services/last_fm_service.dart';
 import 'core/services/youtube_service.dart';
 import 'core/services/spotify_service.dart';
-import 'core/services/last_fm_service.dart';
-import 'core/services/discord_rpc_service.dart';
 
 import 'features/app_shell.dart';
 
 import 'core/services/history_service.dart';
-
 import 'core/services/import_service.dart';
-
+import 'core/services/addon_service.dart';
+import 'core/services/lrclib_addon_handler.dart';
+import 'core/services/local_library_service.dart';
+import 'core/services/navigation_service.dart';
+import 'core/services/local_library_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -42,10 +44,6 @@ void main() async {
   await settingsService.init();
 
   // 2. Core Services
-  final dabApiService = DabApiService();
-  // Fetch dynamic config from Cloudflare Worker
-  await dabApiService.fetchConfig();
-  
   final downloadManager =
       DownloadManagerService(settingsService: settingsService);
 
@@ -53,13 +51,22 @@ void main() async {
   await historyService.init();
 
   final importService = ImportService(); // New background import service
+  
+  final localLibraryService = LocalLibraryService();
+  await localLibraryService.init();
 
-  // 3. Audio Handler
-  // Note: AppAudioHandler needs to be imported
+  final addonService = AddonService(settingsService: settingsService);
+  
+  final lrcLibHandler = LrcLibAddonHandler();
+  addonService.registerUserHandler('net.lrclib', lrcLibHandler);
+
+  await addonService.initAddons();
+
+  // 3. Audio Handler (Background)
   final audioHandler = await AudioService.init(
     builder: () => AppAudioHandler(
       downloadManager: downloadManager,
-      dabApiService: dabApiService,
+      addonService: addonService,
     ),
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.example.beatboss.channel.audio',
@@ -68,9 +75,6 @@ void main() async {
       androidNotificationIcon: 'mipmap/launcher_icon',
     ),
   );
-
-  final youtubeService = YouTubeService();
-  final spotifyService = SpotifyService();
 
   final lastFmService = LastFmService(); // New
   try {
@@ -82,42 +86,43 @@ void main() async {
   final discordRpcService = DiscordRpcService();
   discordRpcService.initialize();
 
+  final youtubeService = YouTubeService();
+  final spotifyService = SpotifyService();
+
   // 4. UI Audio Service
   final audioPlayerService = AudioPlayerService(
     handler: audioHandler,
-    dabApiService: dabApiService,
+    addonService: addonService,
     historyService: historyService,
     lastFmService: lastFmService,
     discordRpcService: discordRpcService, // Inject
   );
 
-  // Auto-login
-  if (settingsService.isLoggedIn) {
-    final token = settingsService.authToken;
-    if (token != null) {
-      // Fire and forget - UI updates via listeners
-      dabApiService.autoLogin(token);
-    }
-  }
+  final navigationService = NavigationService();
 
   // Set system UI style
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+    ),
+  );
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: settingsService),
         ChangeNotifierProvider.value(value: audioPlayerService),
-        ChangeNotifierProvider.value(value: downloadManager),
+        ChangeNotifierProvider.value(value: addonService),
         ChangeNotifierProvider.value(value: historyService),
-        ChangeNotifierProvider.value(value: dabApiService),
+        ChangeNotifierProvider.value(value: localLibraryService),
+        ChangeNotifierProvider.value(value: downloadManager),
         ChangeNotifierProvider.value(value: importService),
+        ChangeNotifierProvider.value(value: lastFmService),
+        ChangeNotifierProvider.value(value: navigationService),
+        Provider.value(value: discordRpcService),
         Provider.value(value: youtubeService),
         Provider.value(value: spotifyService),
-        ChangeNotifierProvider.value(value: lastFmService),
       ],
       child: const BeatBossApp(),
     ),
@@ -129,17 +134,17 @@ class BeatBossApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<SettingsService>(
-      builder: (context, settings, _) {
-        return MaterialApp(
-          title: 'BeatBoss',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: const AppShell(),
-        );
-      },
+    final themeMode = context.watch<SettingsService>().isDarkMode
+        ? ThemeMode.dark
+        : ThemeMode.light;
+
+    return MaterialApp(
+      title: 'BeatBoss',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
+      home: const AppShell(),
     );
   }
 }

@@ -1,7 +1,7 @@
 name: beatboss
 description: BeatBoss Music Player - A beautiful music streaming and download app.
 publish_to: 'none'
-version: 1.8.5
+version: 1.9.0
 
 environment:
   sdk: '>=3.1.0 <4.0.0'
@@ -58,6 +58,8 @@ dependencies:
   image: ^4.1.7
   appwrite: ^22.0.0
   pocketbase: ^0.23.2
+  ffi: ^2.2.0
+  file_picker: ^8.1.4
   # metadata_god: ^1.1.0
 
 dev_dependencies:

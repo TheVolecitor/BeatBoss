@@ -3,14 +3,12 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:media_kit/media_kit.dart'
-    as mk; // Alias to avoid conflicts with just_audio
 import 'package:audio_session/audio_session.dart';
 
 import '../models/models.dart';
 
 import 'download_manager_service.dart';
-import 'dab_api_service.dart';
+import 'addon_service.dart';
 
 /// The AudioHandler manages the audio player and the playlist.
 /// It exposes the standard AudioService interface to the UI (and system).
@@ -22,7 +20,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   late final AudioPlayer _player;
   final DownloadManagerService _downloadManager;
-  final DabApiService _dabApiService;
+  final AddonService _addonService;
 
   // Internal Queue State
   // We mirror the queue in AudioService's queue stream (List<MediaItem>)
@@ -33,9 +31,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   AppAudioHandler({
     required DownloadManagerService downloadManager,
-    required DabApiService dabApiService,
+    required AddonService addonService,
   })  : _downloadManager = downloadManager,
-        _dabApiService = dabApiService {
+        _addonService = addonService {
     // Initialize Pipeline
     if (Platform.isAndroid) {
       _androidEqualizer = AndroidEqualizer();
@@ -362,8 +360,13 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         int retries = 0;
         while (retries < 2) {
           try {
-            // ... existing stream logic
-            final url = await _dabApiService.getStreamUrl(track.id);
+            // Use AddonService to resolve stream URL
+            final url = await _addonService.getStreamUrl(
+              track.id,
+              addonId: track.addonId, 
+              preResolvedUrl: track.streamURL,
+            );
+
             if (url != null) {
               audioUri = Uri.parse(url);
               break;

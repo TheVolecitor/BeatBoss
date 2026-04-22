@@ -9,29 +9,6 @@ import 'dart:typed_data';
 /// 3. Remove junk bytes between metadata and audio.
 /// 4. Preserve SEEKTABLE (important for seeking).
 class FlacUtils {
-  // CRC-8 lookup table for FLAC frame header validation
-  static final List<int> _crc8Table = _buildCrc8Table();
-
-  static List<int> _buildCrc8Table() {
-    final table = List<int>.filled(256, 0);
-    for (int i = 0; i < 256; i++) {
-      int crc = i;
-      for (int j = 0; j < 8; j++) {
-        crc = (crc << 1) ^ ((crc & 0x80) != 0 ? 0x07 : 0);
-      }
-      table[i] = crc & 0xFF;
-    }
-    return table;
-  }
-
-  static int _crc8(List<int> data) {
-    int crc = 0;
-    for (final byte in data) {
-      crc = _crc8Table[(crc ^ byte) & 0xFF];
-    }
-    return crc;
-  }
-
   /// Analyzes and fixes FLAC structure issues.
   static Future<void> cleanupFlacStructure(File file) async {
     print('[FlacUtils] Analyzing: ${file.path}');
@@ -186,9 +163,6 @@ class FlacUtils {
 
     if (offset + 5 > bytes.length) return false;
 
-    // Get blocking strategy
-    final blocking = (bytes[offset + 1] & 0x01);
-
     // Get block size code
     final bsCode = (bytes[offset + 2] >> 4) & 0x0F;
 
@@ -211,7 +185,7 @@ class FlacUtils {
     if (ssCode == 3 || ssCode == 7) return false; // Reserved
 
     // Calculate header length to find CRC
-    int headerLen = 4; // Base header
+    // int headerLen = 4; // Base header
 
     // Add UTF-8 coded sample/frame number (skip this check for simplicity)
     // Just verify we have enough bytes and use a reasonable estimate

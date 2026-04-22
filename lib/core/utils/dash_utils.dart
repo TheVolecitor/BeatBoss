@@ -22,10 +22,10 @@ class DashUtils {
     
     // Manual attribute extractor with multi-character boundary handling
     String? getAttr(String content, String name) {
-      final key = name + '=';
+      final key = '$name=';
       int idx = content.indexOf(key);
       if (idx == -1) {
-        idx = content.indexOf(name + ' =');
+        idx = content.indexOf('$name =');
         if (idx == -1) return null;
       }
 
@@ -52,12 +52,12 @@ class DashUtils {
     String? initUrl = getAttr(manifest, 'initialization')?.replaceAll('&amp;', '&');
     String? mediaTemplate = getAttr(manifest, 'media')?.replaceAll('&amp;', '&');
     
-    if (initUrl == null || mediaTemplate == null) {
-       final initMatch = RegExp(r'initialization\s*=\s*["'']?(https?://[^"''\s>]+)', caseSensitive: false).firstMatch(manifest);
-       final mediaMatch = RegExp(r'media\s*=\s*["'']?(https?://[^"''\s>]+)', caseSensitive: false).firstMatch(manifest);
-       initUrl ??= initMatch?.group(1)?.replaceAll('&amp;', '&');
-       mediaTemplate ??= mediaMatch?.group(1)?.replaceAll('&amp;', '&');
-    }
+      if (initUrl == null || mediaTemplate == null) {
+        final initMatch = RegExp('initialization\\s*=\\s*["\']?(https?://[^"\'\\s>]+)', caseSensitive: false).firstMatch(manifest);
+        final mediaMatch = RegExp('media\\s*=\\s*["\']?(https?://[^"\'\\s>]+)', caseSensitive: false).firstMatch(manifest);
+        initUrl ??= initMatch?.group(1)?.replaceAll('&amp;', '&');
+        mediaTemplate ??= mediaMatch?.group(1)?.replaceAll('&amp;', '&');
+     }
 
     print('[DashUtils] Found Init: ${initUrl ?? "MISSING"}');
     print('[DashUtils] Found Media: ${mediaTemplate ?? "MISSING"}');
@@ -91,7 +91,9 @@ class DashUtils {
         final rVal = getAttr(attrs, 'r');
         if (dVal != null) {
             final r = int.tryParse(rVal ?? '0') ?? 0;
-            for (int k = 0; k <= r; k++) segmentIndices.add(segmentCounter++);
+            for (int k = 0; k <= r; k++) {
+              segmentIndices.add(segmentCounter++);
+            }
         }
     }
 
