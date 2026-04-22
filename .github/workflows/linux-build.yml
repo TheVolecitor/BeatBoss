@@ -1,32 +1,52 @@
 name: Linux Build
-on: 
-  workflow_dispatch: # This allows you to click a button to start the build manually
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
 
 jobs:
   build:
+    name: Build Linux Release
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Linux Dependencies
+      - name: Install Linux System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            libwebkit2gtk-4.1-dev \
+            libsecret-1-dev \
+            libmpv-dev \
+            libasound2-dev \
+            libdbus-1-dev
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true 
 
-      - name: Enable Linux Support
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable Linux Desktop
         run: flutter config --enable-linux-desktop
 
-      - name: Build Linux
+      - name: Build Linux Release
         run: flutter build linux --release
 
-      - name: Upload Linux App
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-app-bundle
+          name: BeatBoss-Linux-Build
           path: build/linux/x64/release/bundle/
+          retention-days: 7
