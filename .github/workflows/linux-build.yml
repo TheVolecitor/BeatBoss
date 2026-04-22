@@ -63,6 +63,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BeatBoss-Linux-Installers
-          # Grabs all generated installers from the dist/ folder
-          path: dist/production/*/
+          # This grabs any .deb or .AppImage file inside any version folder in dist/
+          path: |
+            dist/*/*.deb
+            dist/*/*.AppImage
           retention-days: 7
