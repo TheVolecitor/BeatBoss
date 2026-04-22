@@ -3,10 +3,21 @@ releases:
   - name: production
     jobs:
       - name: linux-deb
+        package:
+          platform: linux
+          target: deb
+          build_args:
+            dart-define:
+              APP_VERSION: 1.9.0
+        # Config for the DEB installer
         package_id: com.beatboss.app
         app_name: beatboss
         display_name: BeatBoss
-        maintainer: TheVolecitor <thevolecitor@gmail.com>
+        maintainer: TheVolecitor
+      
       - name: linux-appimage
+        package:
+          platform: linux
+          target: appimage
         app_name: beatboss
         display_name: BeatBoss
