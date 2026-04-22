@@ -1,0 +1,12 @@
+output: dist/
+releases:
+  - name: production
+    jobs:
+      - name: linux-deb
+        package_id: com.beatboss.app
+        app_name: beatboss
+        display_name: BeatBoss
+        maintainer: TheVolecitor <thevolecitor@gmail.com>
+      - name: linux-appimage
+        app_name: beatboss
+        display_name: BeatBoss
