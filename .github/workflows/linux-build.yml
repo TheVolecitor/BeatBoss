@@ -1,12 +1,12 @@
-name: Linux Build
+name: Linux Build & Package
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual trigger from the Actions tab
   push:
     branches: [ "main" ]
 
 jobs:
-  build:
-    name: Build Linux Release
+  release:
+    name: Build Linux Installers
     runs-on: ubuntu-latest
 
     steps:
@@ -27,13 +27,18 @@ jobs:
             libsecret-1-dev \
             libmpv-dev \
             libasound2-dev \
-            libdbus-1-dev
+            libdbus-1-dev \
+            appstream \
+            libfuse2 # Required for AppImage to run on modern Ubuntu runners
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          cache: true 
+          cache: true
+
+      - name: Install Flutter Distributor
+        run: dart pub global activate flutter_distributor
 
       - name: Get dependencies
         run: flutter pub get
@@ -41,12 +46,18 @@ jobs:
       - name: Enable Linux Desktop
         run: flutter config --enable-linux-desktop
 
-      - name: Build Linux Release
-        run: flutter build linux --release
+      - name: Build and Package
+        run: |
+          # Ensure the Dart binaries are in the path
+          export PATH="$PATH":"$HOME/.pub-cache/bin"
+          
+          # This builds both .deb and .AppImage based on your distributor.yaml
+          flutter_distributor release --name production --jobs linux-deb,linux-appimage
 
-      - name: Upload Artifact
+      - name: Upload Installers
         uses: actions/upload-artifact@v4
         with:
-          name: BeatBoss-Linux-Build
-          path: build/linux/x64/release/bundle/
+          name: BeatBoss-Linux-Installers
+          # flutter_distributor puts compiled files in the dist/ folder
+          path: dist/production/*/
           retention-days: 7
