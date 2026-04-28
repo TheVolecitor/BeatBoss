@@ -41,3 +41,12 @@ lib/core/services/spotify_service.dart
 
 # Remote Server
 dab-sync-server/
+
+dash_test_app/
+temp_repo/
+monochrome_temp/
+record.xml
+serve_wasm.py
+serve_web.bat
+.metadata
+devtools_options.yaml

@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import '../utils/hive/hive_provider.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:io';
 
 import '../models/models.dart';
+import '../utils/platform_helper.dart';
 import 'addon_service.dart';
 
 class LocalLibraryService extends ChangeNotifier {
@@ -198,8 +198,7 @@ class LocalLibraryService extends ChangeNotifier {
 
       if (outputFile == null) return null; // Cancelled
 
-      final file = File(outputFile);
-      await file.writeAsString(jsonString);
+      await PlatformHelper.writeFile(outputFile, jsonString);
       return outputFile;
     } catch (e) {
       print('Export error: $e');
@@ -218,8 +217,8 @@ class LocalLibraryService extends ChangeNotifier {
       );
 
       if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        final jsonString = await file.readAsString();
+        final jsonString = await PlatformHelper.readFile(result.files.single.path!);
+        if (jsonString == null) return 0;
         final exportData = jsonDecode(jsonString);
 
         if (exportData['version'] == 1 && exportData['libraries'] is List) {

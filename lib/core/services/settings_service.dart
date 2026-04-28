@@ -1,8 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
+import '../utils/hive/hive_provider.dart';
 import 'dart:convert';
+import '../utils/platform_helper.dart'; // compile-time conditional
 
 import '../models/models.dart';
 import '../models/addon_models.dart';
@@ -52,25 +51,30 @@ class SettingsService extends ChangeNotifier {
 
   // ========== Download Location ==========
   Future<String> getDownloadLocation() async {
+    // On web, downloads go directly via browser download dialog
+    if (kIsWeb) return 'browser';
+
     String? saved = _box.get(_keyDownloadLocation);
     if (saved != null && saved.isNotEmpty) {
       return saved;
     }
 
-    // Default: Music folder
-    if (Platform.isAndroid) {
+    // Default: platform-specific Music folder
+    if (PlatformHelper.isAndroid) {
       return '/storage/emulated/0/Music/BeatBoss';
-    } else if (Platform.isWindows) {
-      final home = Platform.environment['USERPROFILE'] ?? '';
-      return '$home\\Music\\BeatBoss';
-    } else if (Platform.isLinux || Platform.isMacOS) {
-      final home = Platform.environment['HOME'] ?? '';
-      return '$home/Music/BeatBoss';
+    } else if (PlatformHelper.isWindows) {
+      return _getWindowsMusicPath();
+    } else if (PlatformHelper.isLinux || PlatformHelper.isMacOS) {
+      return _getUnixMusicPath();
     }
-
-    final appDir = await getApplicationDocumentsDirectory();
-    return '${appDir.path}/BeatBoss';
+    return 'downloads';
   }
+
+  String _getWindowsMusicPath() =>
+      PlatformHelper.getEnv('USERPROFILE', fallback: '') + r'\Music\BeatBoss';
+
+  String _getUnixMusicPath() =>
+      PlatformHelper.getEnv('HOME', fallback: '') + '/Music/BeatBoss';
 
   Future<void> setDownloadLocation(String path) async {
     await _box.put(_keyDownloadLocation, path);
@@ -206,35 +210,33 @@ class SettingsService extends ChangeNotifier {
   }
 
   bool isDownloaded(String trackId) {
+    if (kIsWeb) return false; // No local files on web
     final path = getLocalPath(trackId);
     if (path == null) return false;
-    return File(path).existsSync();
+    return PlatformHelper.fileExists(path);
   }
 
   int get downloadedCount => getDownloadedTracks().length;
 
   Future<int> getStorageSize() async {
+    if (kIsWeb) return 0; // No local filesystem on web
     final downloads = getDownloadedTracks();
     int total = 0;
     for (final path in downloads.values) {
-      final file = File(path);
-      if (await file.exists()) {
-        total += await file.length();
-      }
+      total += PlatformHelper.fileSize(path);
     }
     return total;
   }
 
   Future<void> clearCache() async {
     final downloads = getDownloadedTracks();
-    for (final path in downloads.values) {
-      try {
-        final file = File(path);
-        if (await file.exists()) {
-          await file.delete();
+    if (!kIsWeb) {
+      for (final path in downloads.values) {
+        try {
+          PlatformHelper.deleteFile(path);
+        } catch (e) {
+          print('Error deleting $path: $e');
         }
-      } catch (e) {
-        print('Error deleting $path: $e');
       }
     }
     await _box.put(_keyDownloadedTracks, '{}');

@@ -19,16 +19,16 @@ dependencies:
   # Networking
   dio: ^5.4.1
 
-  # Audio Playback
-  just_audio: ^0.10.5
-  just_audio_media_kit: ^2.0.0
-  media_kit_libs_windows_video: ^1.0.0
+  # Audio Playback — using media_kit Player directly (no just_audio shim)
+  media_kit: ^1.2.6
+  media_kit_libs_audio: ^1.0.7
 
 
-  just_audio_background: ^0.0.1-beta.17
+  # System Media Controls (SMTC on Windows, lock-screen on Android, Bluetooth)
   audio_service: ^0.18.18
   audio_service_win: ^0.0.2
-  audio_session: ^0.2.2
+  wakelock_plus: ^1.2.8
+
 
 
   # YouTube (Metadata Extraction)
@@ -37,8 +37,11 @@ dependencies:
   # Local Storage
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  hive_ce: ^2.0.0
+  hive_ce_flutter: ^2.0.0
   path_provider: ^2.1.2
-  flutter_secure_storage: ^9.0.0
+  flutter_secure_storage: ^10.0.0
+  web: ^1.1.1
   http: ^1.2.0
   crypto: ^3.0.3
 
@@ -51,8 +54,7 @@ dependencies:
   permission_handler: ^11.3.0
   html: ^0.15.4
   win32: ^5.0.0
-  media_kit: ^1.2.6
-  media_kit_video: ^2.0.1
+
 
   audiotags: ^1.4.5
   image: ^4.1.7
@@ -60,6 +62,9 @@ dependencies:
   pocketbase: ^0.23.2
   ffi: ^2.2.0
   file_picker: ^8.1.4
+  just_audio: ^0.10.5
+  xml: ^6.6.1
+  just_audio_windows: ^0.2.3
   # metadata_god: ^1.1.0
 
 dev_dependencies:

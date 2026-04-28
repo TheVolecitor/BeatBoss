@@ -237,8 +237,8 @@ class AddonAlbum {
       artworkURL: json['artworkURL'] ?? json['cover'] ?? json['image'],
       trackCount: json['trackCount'] ?? json['numberOfTracks'],
       year: json['year']?.toString(),
-      tracks: json['tracks'] != null
-          ? (json['tracks'] as List<dynamic>)
+      tracks: (json['tracks'] ?? json['songs'] ?? json['songList']) != null
+          ? ((json['tracks'] ?? json['songs'] ?? json['songList']) as List<dynamic>)
               .map((t) => AddonTrack.fromJson(t, addonId: addonId))
               .toList()
           : null,
@@ -278,8 +278,8 @@ class AddonArtist {
           ? List<String>.from(json['genres'])
           : null,
       bio: json['bio'],
-      topTracks: json['topTracks'] != null
-          ? (json['topTracks'] as List<dynamic>)
+      topTracks: (json['topTracks'] ?? json['tracks'] ?? json['songList']) != null
+          ? ((json['topTracks'] ?? json['tracks'] ?? json['songList']) as List<dynamic>)
               .map((t) => AddonTrack.fromJson(t, addonId: addonId))
               .toList()
           : null,

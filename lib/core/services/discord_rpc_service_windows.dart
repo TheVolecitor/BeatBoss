@@ -78,11 +78,11 @@ class DiscordRpcServiceWindows implements DiscordRpcService {
 
     final Map<String, dynamic> activity = {
       'type': 2, // Listening to
-      'details': track.title,
-      'state': track.artist,
+      'details': _truncate(track.title, 120),
+      'state': _truncate(track.artist, 120),
       'assets': {
-        'large_image': track.albumCover ?? 'logo',
-        'large_text': track.albumTitle ?? 'BeatBoss',
+        'large_image': 'logo', 
+        'large_text': _truncate(track.albumTitle ?? 'BeatBoss', 120),
         'small_image': isPlaying ? 'play' : 'pause',
         'small_text': isPlaying ? 'Playing' : 'Paused',
       },
@@ -188,5 +188,10 @@ class DiscordRpcServiceWindows implements DiscordRpcService {
   void dispose() {
     clearPresence();
     _close();
+  }
+
+  String _truncate(String text, int maxLength) {
+    if (text.length <= maxLength) return text;
+    return '${text.substring(0, maxLength - 3)}...';
   }
 }

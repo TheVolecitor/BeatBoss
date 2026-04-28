@@ -36,12 +36,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
     super.initState();
     _loadAddonLibraries();
     
-    context.read<AddonService>().addListener(_onAddonChanged);
+    // Capture service to avoid context lookup after unmount
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<AddonService>().addListener(_onAddonChanged);
+      }
+    });
   }
 
   @override
   void dispose() {
-    context.read<AddonService>().removeListener(_onAddonChanged);
+    // Safely remove listener - if we have access to context here, it's usually okay, 
+    // but we check mounted to be sure.
+    try {
+      context.read<AddonService>().removeListener(_onAddonChanged);
+    } catch (_) {}
     super.dispose();
   }
 
@@ -53,6 +62,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _loadAddonLibraries() async {
     if (!mounted) return;
+    
     final addonService = context.read<AddonService>();
     if (!addonService.supportsLibrary) {
       if (mounted) {
@@ -66,7 +76,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    setState(() => _isLoadingAddon = true);
+    if (mounted) setState(() => _isLoadingAddon = true);
     final libs = await addonService.getLibraries();
 
     if (!mounted) return;
@@ -106,9 +116,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       tracks = await addonService.getLibraryTracks(library.id, limit: 1000);
     }
 
-    if (!mounted) return;
-
-    setState(() => _libraryTracks = tracks);
+    if (mounted) {
+      setState(() => _libraryTracks = tracks);
+    }
   }
 
   void _goBack() {
@@ -119,13 +129,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
 
     if (mounted) {
-      context.read<NavigationService>().clearBackHandler();
+      try {
+        context.read<NavigationService>().clearBackHandler();
+      } catch (_) {}
     }
 
     // Refresh to update track counts
-    if (_isLocalSelected) {
-      // Local lists are fetched synchronously in builder
-    } else {
+    if (!_isLocalSelected) {
       _loadAddonLibraries();
     }
   }

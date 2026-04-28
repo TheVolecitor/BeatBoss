@@ -7,8 +7,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   audiotags
   desktop_webview_window
   flutter_secure_storage_windows
-  media_kit_libs_windows_video
-  media_kit_video
+  just_audio_windows
+  media_kit_libs_windows_audio
   permission_handler_windows
   url_launcher_windows
   window_to_front

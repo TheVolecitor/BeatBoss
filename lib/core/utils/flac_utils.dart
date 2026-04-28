@@ -1,96 +1,216 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 
-/// Comprehensive FLAC structure analyzer and fixer.
+/// Pure-Dart FLAC metadata injector.
 ///
-/// This class performs bit-level analysis to:
-/// 1. Validate STREAMINFO parameters.
-/// 2. Find valid audio frames using proper header validation.
-/// 3. Remove junk bytes between metadata and audio.
-/// 4. Preserve SEEKTABLE (important for seeking).
+/// Strategy (matches the web downloader's approach):
+/// 1. Read the raw bytes.
+/// 2. Parse all existing metadata blocks.
+/// 3. Strip any existing VORBIS_COMMENT and PICTURE blocks (type 4 & 6).
+/// 4. Build a new VORBIS_COMMENT block with title/artist/album/cover.
+/// 5. Rebuild: magic + STREAMINFO (with total_samples=0) + new tags + remaining
+///    blocks + raw audio — all in Dart, zero TagLib/AudioTags involved.
 class FlacUtils {
-  /// Analyzes and fixes FLAC structure issues.
-  static Future<void> cleanupFlacStructure(File file) async {
-    print('[FlacUtils] Analyzing: ${file.path}');
 
-    final bytes = await file.readAsBytes();
+  // ──────────────────────────────────────────────────────────────────────────
+  // Public API
+  // ──────────────────────────────────────────────────────────────────────────
 
-    // 1. Validate magic
-    if (bytes.length < 42 ||
-        bytes[0] != 0x66 ||
-        bytes[1] != 0x4C ||
-        bytes[2] != 0x61 ||
-        bytes[3] != 0x43) {
-      print('[FlacUtils] Invalid FLAC magic, skipping');
-      return;
+  /// Injects FLAC Vorbis Comment tags into [file] and patches STREAMINFO so
+  /// that every low-level player (mpv, Android codec) plays the full file.
+  static Future<void> injectMetadataAndFix(
+    File file, {
+    String? title,
+    String? artist,
+    String? album,
+    Uint8List? coverBytes,
+    String coverMimeType = 'image/jpeg',
+  }) async {
+    print('[FlacUtils] Injecting metadata into: ${file.path}');
+    try {
+      final bytes = await file.readAsBytes();
+
+      // 1. Validate magic
+      if (bytes.length < 42 ||
+          bytes[0] != 0x66 ||
+          bytes[1] != 0x4C ||
+          bytes[2] != 0x61 ||
+          bytes[3] != 0x43) {
+        print('[FlacUtils] Not a valid FLAC file, skipping');
+        return;
+      }
+
+      // 2. Parse existing metadata blocks
+      final analysis = _analyzeMetadata(bytes);
+      if (analysis == null) {
+        print('[FlacUtils] Failed to parse metadata blocks');
+        return;
+      }
+
+      final audioStart = analysis.declaredEnd;
+      print('[FlacUtils] Audio payload starts at byte $audioStart (${bytes.length - audioStart} bytes)');
+
+      // 3. Build new metadata block list:
+      //    - Keep STREAMINFO (type 0), SEEKTABLE (3), CUESHEET (5)
+      //    - Replace VORBIS_COMMENT (4) and PICTURE (6) with our own
+      //    - Drop PADDING (1) to save space
+      final List<_MetadataBlock> keepBlocks = [];
+      for (final block in analysis.blocks) {
+        if (block.type == 0 || block.type == 3 || block.type == 5) {
+          keepBlocks.add(block);
+        }
+      }
+
+      // 4. Build Vorbis Comment block
+      final vcBlock = _buildVorbisComment(
+        title: title,
+        artist: artist,
+        album: album,
+      );
+      keepBlocks.add(vcBlock);
+
+      // 5. Optionally add PICTURE block for cover art
+      if (coverBytes != null && coverBytes.isNotEmpty) {
+        final picBlock = _buildPictureBlock(coverBytes, coverMimeType);
+        keepBlocks.add(picBlock);
+      }
+
+      // 6. Patch STREAMINFO: set total_samples to 0 (unknown) so players read to EOF
+      final patchedBlocks = keepBlocks.map((b) {
+        if (b.type != 0) return b;
+        final d = Uint8List.fromList(b.data);
+        // Bits 108-143 of STREAMINFO = bytes 13-17 of the data payload.
+        // Byte 13, bits [3:0] = top 4 bits of total_samples. Keep upper nibble (MD5 sample size field overlaps).
+        if (d.length >= 18) {
+          d[13] = d[13] & 0xF0; // preserve sample-size bits, zero top of total_samples
+          d[14] = 0;
+          d[15] = 0;
+          d[16] = 0;
+          d[17] = 0;
+        }
+        return _MetadataBlock(type: 0, data: d, offset: b.offset);
+      }).toList();
+
+      // 7. Reassemble: magic + blocks + audio
+      final output = BytesBuilder(copy: false);
+      output.add([0x66, 0x4C, 0x61, 0x43]); // fLaC
+
+      for (int i = 0; i < patchedBlocks.length; i++) {
+        final block = patchedBlocks[i];
+        final isLast = (i == patchedBlocks.length - 1);
+        final header = Uint8List(4);
+        header[0] = (isLast ? 0x80 : 0x00) | (block.type & 0x7F);
+        header[1] = (block.data.length >> 16) & 0xFF;
+        header[2] = (block.data.length >> 8) & 0xFF;
+        header[3] = block.data.length & 0xFF;
+        output.add(header);
+        output.add(block.data);
+      }
+
+      // Append the raw audio payload untouched
+      output.add(bytes.sublist(audioStart));
+
+      final rebuilt = output.takeBytes();
+      print('[FlacUtils] Rebuilt ${rebuilt.length} bytes (original: ${bytes.length})');
+
+      // 8. Write via temp file to avoid partial-write corruption
+      final tempFile = File('${file.path}.flactmp');
+      await tempFile.writeAsBytes(rebuilt);
+      if (await file.exists()) await file.delete();
+      await tempFile.rename(file.path);
+
+      print('[FlacUtils] Metadata injected successfully.');
+    } catch (e) {
+      print('[FlacUtils] injectMetadataAndFix failed: $e');
     }
-
-    // 2. Parse metadata blocks
-    final analysis = _analyzeMetadata(bytes);
-    if (analysis == null) {
-      print('[FlacUtils] Failed to parse metadata');
-      return;
-    }
-
-    print('[FlacUtils] Metadata ends at: ${analysis.declaredEnd}');
-    print('[FlacUtils] Found ${analysis.blocks.length} metadata blocks');
-
-    // 3. Find first VALID audio frame
-    final audioStart = _findFirstValidFrame(bytes, analysis.declaredEnd);
-    if (audioStart == -1) {
-      print(
-          '[FlacUtils] Could not find valid audio frame, file may be corrupted');
-      return;
-    }
-
-    final junkBytes = audioStart - analysis.declaredEnd;
-    print('[FlacUtils] Audio starts at: $audioStart (junk: $junkBytes bytes)');
-
-    // 4. If no junk, file is clean
-    if (junkBytes == 0) {
-      print('[FlacUtils] File structure is clean');
-      return;
-    }
-
-    // 5. Rebuild file
-    print('[FlacUtils] Rebuilding file to remove $junkBytes junk bytes...');
-
-    final output = BytesBuilder();
-
-    // Write magic
-    output.add([0x66, 0x4C, 0x61, 0x43]);
-
-    // Write metadata blocks (keep ALL blocks including SEEKTABLE)
-    // But fix the isLast flag
-    for (int i = 0; i < analysis.blocks.length; i++) {
-      final block = analysis.blocks[i];
-      final isLast = (i == analysis.blocks.length - 1);
-
-      final header = Uint8List(4);
-      header[0] = (isLast ? 0x80 : 0x00) | (block.type & 0x7F);
-      header[1] = (block.data.length >> 16) & 0xFF;
-      header[2] = (block.data.length >> 8) & 0xFF;
-      header[3] = (block.data.length) & 0xFF;
-
-      output.add(header);
-      output.add(block.data);
-    }
-
-    // Write audio data (from validated frame start)
-    output.add(bytes.sublist(audioStart));
-
-    // Write to temp then rename
-    final tempFile = File('${file.path}.fixing');
-    await tempFile.writeAsBytes(output.takeBytes());
-    await tempFile.rename(file.path);
-
-    print('[FlacUtils] File repaired successfully');
   }
 
-  /// Parse metadata blocks and return analysis.
+  /// Legacy no-op shim so no other call-sites break.
+  static Future<void> cleanupFlacStructure(File file) async {
+    // Nothing — callers should now use injectMetadataAndFix.
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Private helpers
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// Builds a FLAC VORBIS_COMMENT block (type 4) from track info.
+  ///
+  /// Format: little-endian 32-bit vendor length + vendor string +
+  ///         32-bit comment count + for each: 32-bit length + "KEY=VALUE"
+  static _MetadataBlock _buildVorbisComment({
+    String? title,
+    String? artist,
+    String? album,
+  }) {
+    final comments = <String>[];
+    if (title != null && title.isNotEmpty) comments.add('TITLE=$title');
+    if (artist != null && artist.isNotEmpty) comments.add('ARTIST=$artist');
+    if (album != null && album.isNotEmpty) comments.add('ALBUM=$album');
+
+    const vendor = 'BeatBoss';
+    final vendorBytes = utf8.encode(vendor);
+
+    final builder = BytesBuilder();
+
+    // Vendor string
+    _writeUint32LE(builder, vendorBytes.length);
+    builder.add(vendorBytes);
+
+    // Comment count
+    _writeUint32LE(builder, comments.length);
+
+    for (final comment in comments) {
+      final commentBytes = utf8.encode(comment);
+      _writeUint32LE(builder, commentBytes.length);
+      builder.add(commentBytes);
+    }
+
+    return _MetadataBlock(type: 4, data: builder.takeBytes(), offset: 0);
+  }
+
+  /// Builds a FLAC PICTURE block (type 6) for cover art.
+  ///
+  /// Spec: https://xiph.org/flac/format.html#metadata_block_picture
+  static _MetadataBlock _buildPictureBlock(Uint8List imageBytes, String mimeType) {
+    final mimeBytes = utf8.encode(mimeType);
+    final descBytes = utf8.encode(''); // empty description
+
+    final builder = BytesBuilder();
+    _writeUint32BE(builder, 3);                // picture type: Cover (front)
+    _writeUint32BE(builder, mimeBytes.length); // MIME length
+    builder.add(mimeBytes);
+    _writeUint32BE(builder, descBytes.length); // description length
+    builder.add(descBytes);
+    _writeUint32BE(builder, 0); // width (unknown)
+    _writeUint32BE(builder, 0); // height (unknown)
+    _writeUint32BE(builder, 0); // color depth (unknown)
+    _writeUint32BE(builder, 0); // indexed color count
+    _writeUint32BE(builder, imageBytes.length);
+    builder.add(imageBytes);
+
+    return _MetadataBlock(type: 6, data: builder.takeBytes(), offset: 0);
+  }
+
+  static void _writeUint32LE(BytesBuilder b, int v) {
+    b.addByte(v & 0xFF);
+    b.addByte((v >> 8) & 0xFF);
+    b.addByte((v >> 16) & 0xFF);
+    b.addByte((v >> 24) & 0xFF);
+  }
+
+  static void _writeUint32BE(BytesBuilder b, int v) {
+    b.addByte((v >> 24) & 0xFF);
+    b.addByte((v >> 16) & 0xFF);
+    b.addByte((v >> 8) & 0xFF);
+    b.addByte(v & 0xFF);
+  }
+
+  /// Parse all metadata blocks from a raw FLAC byte array.
   static _MetadataAnalysis? _analyzeMetadata(Uint8List bytes) {
     final blocks = <_MetadataBlock>[];
-    int offset = 4; // Skip 'fLaC'
+    int offset = 4; // skip 'fLaC'
     bool isLast = false;
 
     while (!isLast && offset + 4 <= bytes.length) {
@@ -105,16 +225,13 @@ class FlacUtils {
       offset += 4;
 
       if (offset + length > bytes.length) {
-        print('[FlacUtils] Truncated block at offset $offset');
+        print('[FlacUtils] Truncated block at offset $offset (type $type, length $length)');
         return null;
       }
 
-      final data = bytes.sublist(offset, offset + length);
+      final data = Uint8List.fromList(bytes.sublist(offset, offset + length));
       blocks.add(_MetadataBlock(type: type, data: data, offset: offset - 4));
-
-      // Log block info
-      final typeName = _blockTypeName(type);
-      print('[FlacUtils] Block: $typeName, length: $length, isLast: $isLast');
+      print('[FlacUtils] Block type=${_blockTypeName(type)} len=$length isLast=$isLast');
 
       offset += length;
     }
@@ -122,114 +239,29 @@ class FlacUtils {
     return _MetadataAnalysis(blocks: blocks, declaredEnd: offset);
   }
 
-  /// Find first valid FLAC audio frame using proper header validation.
-  static int _findFirstValidFrame(Uint8List bytes, int startOffset) {
-    // FLAC frame structure:
-    // - Sync code: 0xFF F8..FD (14 bits: 11111111 111110xx)
-    // - Blocking strategy: 1 bit
-    // - Block size: 4 bits
-    // - Sample rate: 4 bits
-    // - Channel assignment: 4 bits
-    // - Sample size: 3 bits
-    // - Reserved: 1 bit (must be 0)
-    // - Sample/Frame number: variable (UTF-8 encoded)
-    // - Block size (if needed): 8 or 16 bits
-    // - Sample rate (if needed): 8 or 16 bits
-    // - CRC-8: 8 bits
-
-    for (int i = startOffset; i < bytes.length - 5; i++) {
-      // Check sync pattern: 0xFF followed by F8, F9, FA, FB, FC, or FD
-      if (bytes[i] != 0xFF) continue;
-
-      final byte2 = bytes[i + 1];
-      if ((byte2 & 0xFC) != 0xF8) continue;
-
-      // Reserved bit in second byte must be 0
-      if ((byte2 & 0x02) != 0) continue;
-
-      // Validate header structure
-      if (_validateFrameHeader(bytes, i)) {
-        return i;
-      }
-    }
-
-    return -1;
-  }
-
-  /// Validate FLAC frame header using CRC-8.
-  static bool _validateFrameHeader(Uint8List bytes, int offset) {
-    // Minimum frame header is 5 bytes (sync + blocking + bs/sr + ch/ss/res + crc)
-    // But with UTF-8 coded number, it can be longer
-
-    if (offset + 5 > bytes.length) return false;
-
-    // Get block size code
-    final bsCode = (bytes[offset + 2] >> 4) & 0x0F;
-
-    // Get sample rate code
-    final srCode = bytes[offset + 2] & 0x0F;
-
-    // Get channel assignment
-    final chCode = (bytes[offset + 3] >> 4) & 0x0F;
-
-    // Get sample size code
-    final ssCode = (bytes[offset + 3] >> 1) & 0x07;
-
-    // Reserved bit must be 0
-    if ((bytes[offset + 3] & 0x01) != 0) return false;
-
-    // Validate codes are in expected ranges
-    if (bsCode == 0) return false; // Reserved
-    if (srCode == 15) return false; // Invalid
-    if (chCode > 10) return false; // Invalid
-    if (ssCode == 3 || ssCode == 7) return false; // Reserved
-
-    // Calculate header length to find CRC
-    // int headerLen = 4; // Base header
-
-    // Add UTF-8 coded sample/frame number (skip this check for simplicity)
-    // Just verify we have enough bytes and use a reasonable estimate
-
-    // For validation, we'll just check that this looks like a valid frame start
-    // without full CRC validation (too complex for edge cases)
-
-    return true;
-  }
-
   static String _blockTypeName(int type) {
     switch (type) {
-      case 0:
-        return 'STREAMINFO';
-      case 1:
-        return 'PADDING';
-      case 2:
-        return 'APPLICATION';
-      case 3:
-        return 'SEEKTABLE';
-      case 4:
-        return 'VORBIS_COMMENT';
-      case 5:
-        return 'CUESHEET';
-      case 6:
-        return 'PICTURE';
-      default:
-        return 'UNKNOWN($type)';
+      case 0: return 'STREAMINFO';
+      case 1: return 'PADDING';
+      case 2: return 'APPLICATION';
+      case 3: return 'SEEKTABLE';
+      case 4: return 'VORBIS_COMMENT';
+      case 5: return 'CUESHEET';
+      case 6: return 'PICTURE';
+      default: return 'UNKNOWN($type)';
     }
   }
 }
 
 class _MetadataBlock {
   final int type;
-  final List<int> data;
+  final Uint8List data;
   final int offset;
-
-  _MetadataBlock(
-      {required this.type, required this.data, required this.offset});
+  _MetadataBlock({required this.type, required this.data, required this.offset});
 }
 
 class _MetadataAnalysis {
   final List<_MetadataBlock> blocks;
   final int declaredEnd;
-
   _MetadataAnalysis({required this.blocks, required this.declaredEnd});
 }

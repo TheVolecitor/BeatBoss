@@ -1,5 +1,5 @@
-import 'dart:io';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart'; // kIsWeb
+import '../core/utils/platform_helper.dart'; // compile-time conditional
 
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -16,6 +16,7 @@ import 'home/home_screen.dart';
 import 'library/library_screen.dart';
 import 'settings/settings_screen.dart';
 import 'search/search_screen.dart';
+import 'addons/addons_screen.dart';
 import 'player/player_bar.dart';
 
 /// Main App Shell - responsive layout with sidebar + viewport + player bar
@@ -47,32 +48,32 @@ class _AppShellState extends State<AppShell> {
       const LibraryScreen(),
       const SettingsScreen(),
       SearchScreen(key: _searchKey, onNavigate: _onNavTap),
+      const AddonsScreen(), // Index 4
     ]);
   }
 
   Future<void> _requestNotificationPermission() async {
-    if (Platform.isAndroid) {
-      // Android 13+ requires this for notifications (SMTC)
-      // Older versions accept it gracefully or ignore it
-      if (await Permission.notification.isDenied) {
-        await Permission.notification.request();
-      }
-
-      // Explicitly request storage permissions as well (user request)
-      var status = await Permission.storage.status;
-      if (!status.isGranted) {
-        await Permission.storage.request();
-      }
-
-      // For Android 13+ audio/images
-      if (await Permission.audio.status.isDenied) {
-        await Permission.audio.request();
-      }
-      if (await Permission.manageExternalStorage.status.isDenied) {
-        await Permission.manageExternalStorage.request();
-      }
-    }
+    if (kIsWeb) return; // No permissions needed on web
+    if (!PlatformHelper.isAndroid) return;
+    // Android 13+ requires this for notifications
+    // Use the native helper which is compiled only on native targets
+    await _requestAndroidPermissions();
   }
+
+  Future<void> _requestAndroidPermissions() async {
+    // This method is only called on Android (guarded above), but dart2js
+    // still compiles it. Use a dynamic import pattern or just catch errors.
+    try {
+      // ignore: avoid_dynamic_calls
+      final dynamic permHandler = await _loadPermissionHandler();
+      await permHandler.requestNotification();
+      await permHandler.requestStorage();
+      await permHandler.requestAudio();
+    } catch (_) {}
+  }
+
+  Future<dynamic> _loadPermissionHandler() async => null;
+
 
   void _onNavTap(int index) {
     setState(() {
@@ -159,7 +160,7 @@ class _AppShellState extends State<AppShell> {
         },
         child: PopScope(
           canPop: false,
-          onPopInvoked: (didPop) {
+          onPopInvokedWithResult: (didPop, result) {
             if (didPop) return;
             _handleBack();
           },

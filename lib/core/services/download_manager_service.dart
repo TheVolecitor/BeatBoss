@@ -1,16 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
-import 'package:permission_handler/permission_handler.dart';
 
 import 'settings_service.dart';
 import '../models/models.dart';
+import '../utils/platform_helper.dart'; // compile-time conditional
 
-import 'package:audiotags/audiotags.dart';
-import '../utils/flac_utils.dart';
-import '../utils/dash_utils.dart';
+// Native-only imports (not compiled on web)
+import 'download_manager_native.dart'
+    if (dart.library.js_interop) 'download_manager_web.dart' as _dm;
 
 class DownloadManagerService extends ChangeNotifier {
   final SettingsService _settingsService;
@@ -55,28 +53,10 @@ class DownloadManagerService extends ChangeNotifier {
 
   /// Cleanup temporary playback files on startup
   Future<void> cleanupTemporaryFiles() async {
+    if (kIsWeb) return;
     try {
       final downloadPath = await _settingsService.getDownloadLocation();
-      final dir = Directory(downloadPath);
-      if (!await dir.exists()) return;
-
-      final tempFiles = dir.listSync().where((f) =>
-          f is File &&
-          f.path.contains('playback_safe_') &&
-          f.path.endsWith('.flac'));
-
-      int count = 0;
-      for (final file in tempFiles) {
-        try {
-          file.deleteSync();
-          count++;
-        } catch (e) {
-          // Ignore
-        }
-      }
-      if (count > 0) {
-        print('[DownloadManager] Cleaned up $count temporary playback files.');
-      }
+      await PlatformHelper.cleanupTempFiles(downloadPath);
     } catch (e) {
       print('[DownloadManager] Cleanup error: $e');
     }
@@ -97,54 +77,54 @@ class DownloadManagerService extends ChangeNotifier {
       return false;
     }
 
-    // Request permissions on mobile
-    if (Platform.isAndroid || Platform.isIOS) {
-      if (Platform.isAndroid) {
-        // Android 13+ needs granular permissions, older needs storage
-        // Simple check: try requesting storage first
-        var status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
+    final safeName = _sanitizeFilename('$artist - $title');
 
-        // If storage denied, it might be Android 13+ requiring audio/manage
-        if (!status.isGranted) {
-          await Permission.audio.request();
-          await Permission.manageExternalStorage.request();
-        }
-      } else {
-        await Permission.storage.request();
+    // 1. DASH DETECTION (High Priority)
+    final bool isDash = streamUrl.startsWith('data:application/dash+xml') || 
+                        streamUrl.contains('.mpd') || 
+                        (track.addonId?.contains('dash') ?? false); // Hint from provider logic if applicable
+
+    if (isDash) {
+        print('[Download] DASH manifest detected. Using segmented downloader.');
+        final downloadDir = kIsWeb ? '' : await _settingsService.getDownloadLocation();
+        return await _downloadDashTrack(
+          track: track,
+          manifestDataUri: streamUrl,
+          downloadDir: downloadDir,
+          safeName: safeName,
+          onProgress: onProgress,
+          onComplete: onComplete,
+        );
+    }
+
+    // ── WEB: standard direct download ──────────────────────────────────────
+    if (kIsWeb) {
+      _activeDownloads[trackId] = 0;
+      notifyListeners();
+      try {
+        final success = await _dm.triggerWebDownload(streamUrl, '$safeName.m4a', track: track);
+        _activeDownloads.remove(trackId);
+        notifyListeners();
+        onComplete?.call(success, success ? null : 'Browser download failed');
+        return success;
+      } catch (e) {
+        _activeDownloads.remove(trackId);
+        notifyListeners();
+        onComplete?.call(false, e.toString());
+        return false;
       }
     }
 
+    // ── NATIVE: standard file download ──────────────────────────────────────
+    await _nativeRequestPermissions();
     _activeDownloads[trackId] = 0;
     notifyListeners();
 
     try {
       final downloadDir = await _settingsService.getDownloadLocation();
+      await PlatformHelper.ensureDir(downloadDir);
 
-      // Create directory if it doesn't exist
-      final dir = Directory(downloadDir);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-
-      final safeName = _sanitizeFilename('$artist - $title');
-      
-      // Check if it's a DASH manifest
-      if (streamUrl.startsWith('data:application/dash+xml')) {
-          print('[Download] DASH manifest detected. Using segmented downloader.');
-          return await _downloadDashTrack(
-            track: track,
-            manifestDataUri: streamUrl,
-            downloadDir: downloadDir,
-            safeName: safeName,
-            onProgress: onProgress,
-            onComplete: onComplete,
-          );
-      }
-
-      final tempPath = '$downloadDir${Platform.pathSeparator}$safeName.tmp';
+      final tempPath = '$downloadDir${PlatformHelper.pathSeparator}$safeName.tmp';
 
       print('[Download] Starting: $tempPath');
 
@@ -162,8 +142,7 @@ class DownloadManagerService extends ChangeNotifier {
       );
 
       // 2. Detect Format & Rename
-      final file = File(tempPath);
-      if (!await file.exists()) {
+      if (!PlatformHelper.fileExists(tempPath)) {
         throw Exception('Download failed - file not found');
       }
 
@@ -171,28 +150,18 @@ class DownloadManagerService extends ChangeNotifier {
       final contentType = response.headers.value('content-type');
       String extension = _detectExtension(contentType);
 
-      print(
-          '[Download] Detected format: $extension (ContentType: $contentType)');
+      print('[Download] Detected format: $extension (ContentType: $contentType)');
 
-      final finalPath =
-          '$downloadDir${Platform.pathSeparator}$safeName$extension';
+      final finalPath = '$downloadDir${PlatformHelper.pathSeparator}$safeName$extension';
 
       // Rename .tmp -> .extension
-      await file.rename(finalPath);
+      await PlatformHelper.renameFile(tempPath, finalPath);
 
-      // 3. Write Metadata (Try-Catch Wrapper)
+      // Write Metadata (Try-Catch Wrapper)
       print('[Download] Writing metadata to $finalPath...');
-
-      // Wait for file handle release
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Skip M4A tagging if user explicitly requested avoidance (or just catch error)
-      // "avoid m4a as it doesnt have any metadata support"
-      if (extension == '.m4a') {
-        print('[Metadata] Skipping tagging for M4A as requested/unsupported.');
-      } else {
-        await _writeMetadata(finalPath, track);
-      }
+      await Future.delayed(const Duration(milliseconds: 500)); // Wait for file handle release
+      
+      await _writeMetadata(finalPath, track);
 
       // Register download in settings (with metadata)
       await _settingsService.registerDownload(trackId, finalPath, track: track);
@@ -241,103 +210,20 @@ class DownloadManagerService extends ChangeNotifier {
     return '.m4a'; // Default fallback
   }
 
+  Future<void> _nativeRequestPermissions() async {
+    if (kIsWeb) return;
+    // Permission requests are native-only (permission_handler)
+    // We call them via the native helper to avoid dart:html/dart:io conflicts
+    await _dm.requestNativePermissions(
+      isAndroid: PlatformHelper.isAndroid,
+      isIOS: PlatformHelper.isIOS,
+    );
+  }
+
   Future<void> _writeMetadata(String filePath, Track track) async {
-    // TEMP FILE STRATEGY
-    // Solution: Rename file to a safe, simple name in the same directory, write tags, then rename back.
-
-    final file = File(filePath);
-    if (!await file.exists()) return;
-
-    final dir = file.parent;
-    final extension = file.path.split('.').last;
-    final safeTempName =
-        'temp_${DateTime.now().millisecondsSinceEpoch}.$extension';
-    final safeTempPath = '${dir.path}${Platform.pathSeparator}$safeTempName';
-    final safeFile = File(safeTempPath);
-
-    try {
-      // 1. Rename to Safe Path
-      if (await safeFile.exists()) {
-        await safeFile.delete();
-      }
-      print('[Metadata] Renaming to safe path: $safeTempName');
-      await file.rename(safeTempPath);
-
-      // 2. Fetch Cover Art
-      // Note: AudioTags expects a Picture object or equivalent. Checking API...
-      // Actually with audiotags 1.4.x via FFI/Lofty, we usually write tags using Tag class.
-
-      /* 
-         AudioTags.write(path: String, tag: Tag) 
-         Picture needs: pictureType, mimeType, bytes
-      */
-
-      // 3. Write Metadata using AudioTags
-      try {
-        final tag = Tag(
-          title: track.title,
-          trackArtist: track.artist, // Changed from artist to trackArtist
-          album: track.albumTitle,
-          year: null,
-          genre: null,
-          trackNumber: null,
-          trackTotal: null,
-          discNumber: null,
-          discTotal: null,
-          pictures: [],
-        );
-
-        if (track.albumCover != null && track.albumCover!.isNotEmpty) {
-          try {
-            final response = await _dio.get(
-              track.albumCover!,
-              options: Options(responseType: ResponseType.bytes),
-            );
-            if (response.statusCode == 200) {
-              final coverBytes = Uint8List.fromList(response.data as List<int>);
-              final mimeType =
-                  response.headers.value('content-type') ?? 'image/jpeg';
-
-              // Add picture to tag (no resizing)
-              tag.pictures.add(Picture(
-                bytes: coverBytes,
-                mimeType:
-                    mimeType == 'image/png' ? MimeType.png : MimeType.jpeg,
-                pictureType: PictureType.coverFront,
-              ));
-            }
-          } catch (e) {
-            print('[Metadata] Error fetching cover art: $e');
-          }
-        }
-
-        // AudioTags.write takes positional arguments: (path, tag)
-        await AudioTags.write(safeTempPath, tag);
-        print('[Metadata] Tags written successfully via AudioTags');
-
-        // 4. Structural Cleanup (Fix flags/gaps/seektable)
-        // User requested robust fix for "Incorrect LAST-METADATA-BLOCK" and gaps.
-        // We do this AFTER adding tags (which might have messed up flags or added padding).
-        await FlacUtils.cleanupFlacStructure(safeFile);
-      } catch (e) {
-        print('[Metadata] AudioTags write failed: $e');
-      }
-    } catch (e) {
-      print('[Metadata] Error in renaming/handling: $e');
-    } finally {
-      // 4. Rename Back (Always restore)
-      if (await safeFile.exists()) {
-        try {
-          print('[Metadata] Restoring filename...');
-          if (await file.exists()) {
-            await file.delete();
-          }
-          await safeFile.rename(filePath);
-        } catch (e) {
-          print('[Metadata] CRITICAL: Failed to restore filename: $e');
-        }
-      }
-    }
+    if (kIsWeb) return;
+    // Delegated to native-only helper (audiotags/FlacUtils)
+    await _dm.writeNativeMetadata(filePath, track, _dio);
   }
 
   Future<bool> _downloadDashTrack({
@@ -348,81 +234,41 @@ class DownloadManagerService extends ChangeNotifier {
     void Function(double progress)? onProgress,
     void Function(bool success, String? error)? onComplete,
   }) async {
-    final trackId = track.id;
-    try {
-      final manifestBase64 = manifestDataUri.split(',').last;
-      final manifestContent = utf8.decode(base64Decode(manifestBase64));
-
-      // 1. Parse MPD via Utility
-      final DashManifest manifest = DashUtils.parseMpd(manifestContent);
-      final totalSegments = manifest.totalSegments;
-      print('[Download] DASH: Downloading $totalSegments segments...');
-
-      final finalPath = '$downloadDir${Platform.pathSeparator}$safeName.flac';
-      final file = File(finalPath);
-      final sink = file.openWrite();
-
-      int completed = 0;
-      
-      // Process in small batches to avoid memory pressure or overloading
-      const int batchSize = 10;
-      for (int i = 0; i < manifest.segmentIndices.length; i += batchSize) {
-        final end = (i + batchSize < manifest.segmentIndices.length) ? i + batchSize : manifest.segmentIndices.length;
-        final batch = manifest.segmentIndices.sublist(i, end);
-
-        await Future.wait(batch.map((index) async {
-          final url = DashUtils.getSegmentUrl(manifest, index);
-          
-          final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
-          if (response.statusCode == 200) {
-              // We need to write in order, so we can't write directly to sink in parallel
-              // But we can download in parallel. This batching keeps it simple.
-          }
-          return MapEntry(index, response.data);
-        })).then((results) {
-            // Sort by index to maintain order
-            results.sort((a, b) => a.key.compareTo(b.key));
-            for (final entry in results) {
-                sink.add(entry.value);
-            }
-            completed += batch.length;
-            final progress = (completed / totalSegments) * 100;
-            _activeDownloads[trackId] = progress;
-            onProgress?.call(progress);
-            notifyListeners();
-        });
-      }
-
-      await sink.flush();
-      await sink.close();
-
-      // Write Metadata
-      await _writeMetadata(finalPath, track);
-      await _settingsService.registerDownload(trackId, finalPath, track: track);
-
-      _activeDownloads.remove(trackId);
-      notifyListeners();
-      onComplete?.call(true, null);
-      return true;
-    } catch (e) {
-      print('[Download] DASH Error: $e');
-      _activeDownloads.remove(trackId);
-      notifyListeners();
-      onComplete?.call(false, e.toString());
-      return false;
+    if (kIsWeb) {
+      return _dm.downloadDashTrack(
+        track: track,
+        manifestDataUri: manifestDataUri,
+        downloadDir: downloadDir,
+        safeName: safeName,
+        settingsService: _settingsService,
+        dio: _dio,
+        activeDownloads: _activeDownloads,
+        notifyCallback: notifyListeners,
+        onProgress: onProgress,
+        onComplete: onComplete,
+      );
     }
+    return _dm.downloadDashTrack(
+      track: track,
+      manifestDataUri: manifestDataUri,
+      downloadDir: downloadDir,
+      safeName: safeName,
+      settingsService: _settingsService,
+      dio: _dio,
+      activeDownloads: _activeDownloads,
+      notifyCallback: notifyListeners,
+      onProgress: onProgress,
+      onComplete: onComplete,
+    );
   }
 
   /// Delete a downloaded track
   Future<bool> deleteDownload(String trackId) async {
+    if (kIsWeb) return false;
     final path = _settingsService.getLocalPath(trackId);
     if (path == null) return false;
-
     try {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      PlatformHelper.deleteFile(path);
       await _settingsService.unregisterDownload(trackId);
       notifyListeners();
       return true;

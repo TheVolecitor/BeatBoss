@@ -167,20 +167,25 @@ class _LyricsListState extends State<LyricsList> {
 
                 return GestureDetector(
                   onTap: () => player.seekToLyric(index),
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 12),
-                    child: Text(
-                      lyric.text,
+                        horizontal: 30, vertical: 16),
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: isActive
                             ? (widget.isDark ? Colors.white : Colors.black)
-                            : (widget.isDark ? Colors.white30 : Colors.black38),
-                        fontSize: isActive ? 24 : 18,
+                            : (widget.isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2)),
+                        fontSize: isActive ? 28 : 20,
                         fontWeight:
-                            isActive ? FontWeight.bold : FontWeight.normal,
+                            isActive ? FontWeight.bold : FontWeight.w600,
+                        height: 1.4,
                       ),
+                      child: Text(lyric.text),
                     ),
                   ),
                 );

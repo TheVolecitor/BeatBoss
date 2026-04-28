@@ -1,0 +1,9 @@
+display_name: BeatBoss
+package_name: beatboss
+maintainer:
+  name: Your Name
+  email: contact@example.com
+icon: assets/icon.png
+categories:
+  - AudioVideo
+  - Audio

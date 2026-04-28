@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../models/addon_models.dart';
 import 'user_addon_handler.dart';
 
@@ -7,9 +8,9 @@ import 'user_addon_handler.dart';
 class LrcLibAddonHandler extends UserAddonHandler {
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://lrclib.net/api',
-    connectTimeout: const Duration(seconds: 5),
-    receiveTimeout: const Duration(seconds: 5),
-    headers: {
+    connectTimeout: const Duration(seconds: 20),
+    receiveTimeout: const Duration(seconds: 20),
+    headers: kIsWeb ? {} : {
       'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
       'accept-encoding': 'gzip, deflate, br, zstd',
       'accept-language': 'en-US,en;q=0.9',

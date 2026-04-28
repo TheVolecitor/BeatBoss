@@ -53,8 +53,6 @@ class AudioPlayerService with ChangeNotifier {
   int get currentLyricIndex => _currentLyricIndex;
   bool get isFetchingLyrics => _isFetchingLyrics;
 
-  // Expose Session ID for EQ (Android)
-  int? get audioSessionId => _handler.audioSessionId;
 
   int get sliderValue {
     if (_duration.inMilliseconds > 0) {
@@ -110,6 +108,7 @@ class AudioPlayerService with ChangeNotifier {
     _handler.playbackState.listen((state) {
       _position = state.position;
       _bufferedPosition = state.bufferedPosition; // Added
+      _updateCurrentLyric(); // Keep lyrics in sync with position
 
       switch (state.repeatMode) {
         case AudioServiceRepeatMode.none:
@@ -133,7 +132,7 @@ class AudioPlayerService with ChangeNotifier {
 
       if (_isPlaying != state.playing) {
         _isPlaying = state.playing;
-        _updateDiscordPresence(); // Update Discord on Play/Pause
+        _updateDiscordPresence(debounced: true); // Update Discord on Play/Pause
       }
 
       notifyListeners();
@@ -163,7 +162,7 @@ class AudioPlayerService with ChangeNotifier {
           // Last.fm: Update Now Playing & Reset Scrobble
           _hasScrobbled = false;
           _lastFmService.updateNowPlaying(_currentTrack!);
-          _updateDiscordPresence();
+          _updateDiscordPresence(debounced: true);
         }
         notifyListeners();
       }
@@ -182,24 +181,25 @@ class AudioPlayerService with ChangeNotifier {
       notifyListeners();
     });
 
+    // Throttle position updates to 200ms to reduce bridge pressure on Windows
+    DateTime _lastNotify = DateTime.now();
     AudioService.position.listen((pos) {
       _position = pos;
       _updateCurrentLyric();
 
       // Last.fm Scrobble Logic
-      // Rule: Played for 50% OR 4 minutes (240 seconds)
       if (!_hasScrobbled && _currentTrack != null && _duration.inSeconds > 30) {
-        final thresholdSeconds =
-            (_duration.inSeconds / 2).clamp(0, 240).toDouble();
-
+        final thresholdSeconds = (_duration.inSeconds / 2).clamp(0, 240).toDouble();
         if (pos.inSeconds >= thresholdSeconds) {
           _hasScrobbled = true;
           _lastFmService.scrobble(_currentTrack!, timestamp: DateTime.now());
-          print('Scrobble triggered for: ${_currentTrack!.title}');
         }
       }
 
-      notifyListeners();
+      if (DateTime.now().difference(_lastNotify).inMilliseconds > 200) {
+        _lastNotify = DateTime.now();
+        notifyListeners();
+      }
     });
 
     // Optimization: Listen to shuffle/repeat changes directly or via streams.
@@ -392,21 +392,39 @@ class AudioPlayerService with ChangeNotifier {
     }
   }
 
-  void _updateDiscordPresence() {
+  Timer? _discordDebounceTimer;
+
+  void _updateDiscordPresence({bool debounced = false}) {
+    if (debounced) {
+      _discordDebounceTimer?.cancel();
+      _discordDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+        _performDiscordUpdate();
+      });
+    } else {
+      _performDiscordUpdate();
+    }
+  }
+
+  void _performDiscordUpdate() {
     if (_currentTrack == null) {
       _discordRpcService.clearPresence();
       return;
     }
-    _discordRpcService.updatePresence(
-      track: _currentTrack!,
-      isPlaying: _isPlaying,
-      position: _position,
-      duration: _duration,
-    );
+    try {
+      _discordRpcService.updatePresence(
+        track: _currentTrack!,
+        isPlaying: _isPlaying,
+        position: _position,
+        duration: _duration,
+      );
+    } catch (e) {
+      print('[DiscordRPC] Update error: $e');
+    }
   }
 
   @override
   void dispose() {
+    _discordDebounceTimer?.cancel();
     _stopTicker();
     _discordRpcService.dispose();
     super.dispose();

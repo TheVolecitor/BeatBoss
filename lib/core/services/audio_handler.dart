@@ -1,133 +1,152 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/foundation.dart'; // kIsWeb
+import '../utils/platform_helper.dart';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:audio_session/audio_session.dart';
+import 'package:media_kit/media_kit.dart' as mk;
+
 
 import '../models/models.dart';
-
 import 'download_manager_service.dart';
 import 'addon_service.dart';
+import 'dash_service.dart';
+import 'dash_native_parser.dart';
+import 'dash_local_proxy_server.dart';
+import 'native_player_config.dart';
+
 
 /// The AudioHandler manages the audio player and the playlist.
 /// It exposes the standard AudioService interface to the UI (and system).
+/// Uses media_kit Player directly — no just_audio shim.
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
-  // Android Equalizer instance - created here to be part of the pipeline
-  // accessible via getter for AudioEffectsService
-  AndroidEqualizer? _androidEqualizer;
-  AndroidEqualizer? get androidEqualizer => _androidEqualizer;
-
-  late final AudioPlayer _player;
+  // Single stable media_kit Player — never recreated.
+  // open() atomically replaces the current source without needing disposal.
+  final mk.Player _player;
   final DownloadManagerService _downloadManager;
   final AddonService _addonService;
 
   // Internal Queue State
-  // We mirror the queue in AudioService's queue stream (List<MediaItem>)
   List<Track> _internalQueue = [];
   int _currentIndex = -1;
+  bool _isDashActive = false;
+  Timer? _positionTimer;
+  int _lastRequestId = 0;
 
-  // Custom State initialized
+  // Loop/Shuffle tracked internally (media_kit PlaylistMode)
+  mk.PlaylistMode _currentPlaylistMode = mk.PlaylistMode.none;
+  bool _shuffleEnabled = false;
+
+  final List<StreamSubscription> _subscriptions = [];
 
   AppAudioHandler({
     required DownloadManagerService downloadManager,
     required AddonService addonService,
-  })  : _downloadManager = downloadManager,
-        _addonService = addonService {
-    // Initialize Pipeline
-    if (Platform.isAndroid) {
-      _androidEqualizer = AndroidEqualizer();
-      _player = AudioPlayer(
-        audioPipeline: AudioPipeline(
-          androidAudioEffects: [_androidEqualizer!],
+  })  : _player = mk.Player(
+          configuration: mk.PlayerConfiguration(
+            title: 'BeatBoss',
+            logLevel: mk.MPVLogLevel.error,
+            protocolWhitelist: [
+              'udp', 'rtp', 'tcp', 'tls', 'data', 'file',
+              'http', 'https', 'crypto', 'httpproxy',
+            ],
+          ),
         ),
-      );
-    } else {
-      _player = AudioPlayer();
-    }
-
+        _downloadManager = downloadManager,
+        _addonService = addonService {
     _init();
   }
 
-  // Expose explicit state for polling
-  Duration get currentPosition => _player.position;
-  bool get isPlayerPlaying => _player.playing;
-  int? _audioSessionId;
-  int? get audioSessionId => _audioSessionId;
+  // Expose explicit state for UI polling
+  Duration get currentPosition {
+    if (_isDashActive) return playbackState.value.position;
+    return _player.state.position;
+  }
 
-  // Expose internal player for AudioEffectsService (EQ)
-  AudioPlayer get player => _player;
+  bool get isPlayerPlaying {
+    if (_isDashActive) return playbackState.value.playing;
+    return _player.state.playing;
+  }
 
   Future<void> _init() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
-
-    // Android specfic: get session ID for EQ
-    if (Platform.isAndroid) {
-      // just_audio exposes androidAudioSessionId via player
-      // But we need to wait for player to initialize?
-      // JustAudio doc says androidAudioSessionId is available after setting source?
-      // Let's defer or poll.
-      // Actually `player.androidAudioSessionId` is a property.
+    // Cleanup old temp files from previous sessions (native only)
+    if (!kIsWeb) {
+      _downloadManager.cleanupTemporaryFiles();
     }
 
-    // Cleanup old temp files from previous sessions
-    _downloadManager.cleanupTemporaryFiles();
+    // Set mpv properties via NativePlayer API for reliable DASH playback.
+    // DASH is thread-heavy (multiple segment-fetching workers). These settings
+    // prevent the file-lock and thread-reaping crashes on Windows.
+    if (!kIsWeb) {
+      configureNativePlayer(_player);
+    }
 
-    // Broadcast playback state via pipe (Standard SMTC procedure)
-    // This transforms just_audio events into audio_service PlaybackState
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
 
-    // Listen to Processing State for track completion to handle auto-advance
-    _player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed) {
-        // Check for premature completion (Stream Drop)
-        // If we consistently stop 5s before end, it's a drop.
-        final duration = _player.duration;
-        final position = _player.position;
-
-        if (duration != null &&
-            duration.inSeconds > 30 && // Only for substantial tracks
-            position.inSeconds > 5 && // Ensure we actually played something
-            position.inSeconds < duration.inSeconds - 10) {
-          // Dropped more than 10s before end
-
-          print(
-              "[AudioHandler] Premature stop detected at ${position.inSeconds}s. Attempting auto-recovery...");
-          _playQueueItem(_currentIndex, startPosition: position);
-        } else {
-          _handleTrackCompletion();
-        }
-      }
-    });
-
-    _setupErrorListeners();
+    _setupPlayerListeners();
   }
 
-  // Error listener
-  void _setupErrorListeners() {
-    // just_audio emits errors sometimes via playbackEventStream
-    _player.playbackEventStream.listen((event) {},
-        onError: (Object e, StackTrace st) {
-      print("[AudioHandler] Playback Error: $e");
+  void _setupPlayerListeners() {
+    // Clear existing subscriptions
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
 
-      // Attempt recovery on error if we were playing or expecting to play
-      if (_currentIndex >= 0 && _currentIndex < _internalQueue.length) {
-        print("[AudioHandler] Attempting recovery from error...");
-        // Wait a bit before retrying to avoid loop
-        Future.delayed(const Duration(seconds: 1), () {
-          final pos = _player.position;
-          _playQueueItem(_currentIndex, startPosition: pos);
-        });
-      }
-    });
+    // Subscribe to media_kit streams and push PlaybackState to audio_service
+    _subscriptions.addAll([
+      _player.stream.playing.listen((_) => _broadcastState()),
+      _player.stream.position.listen((_) => _broadcastState()),
+      _player.stream.buffer.listen((_) => _broadcastState()),
+      _player.stream.buffering.listen((_) => _broadcastState()),
+      _player.stream.duration.listen((_) => _broadcastState()),
+      _player.stream.completed.listen((completed) {
+        if (completed) _handleTrackCompletion();
+      }),
+      _player.stream.error.listen((error) {
+        // LOG ONLY — do NOT auto-retry.
+        // Transient TCP errors (WSAECONNABORTED, TLS reconnect) are common during
+        // DASH segment fetching and are non-fatal. MPV reconnects automatically.
+        // The old auto-recovery here was the actual cause of the crash:
+        // it called _playQueueItem → dispose → recreate → seek into unloaded DASH → crash.
+        print('[AudioHandler] MPV Error (non-fatal, no auto-retry): $error');
+      }),
+      _player.stream.log.listen((log) {
+        print('MPV: [${log.level}] ${log.prefix}: ${log.text}');
+      }),
+    ]);
+
+    // Web: position polling for DASH seek bar
+    if (kIsWeb) {
+      _subscriptions.add(_player.stream.playing.listen((playing) {
+        if (playing) _startPositionPolling();
+        else _stopPositionPolling();
+      }));
+    }
   }
 
-  PlaybackState _transformEvent(PlaybackEvent event) {
-    return PlaybackState(
+  /// Broadcasts current player state to audio_service (SMTC / Bluetooth / UI)
+  void _broadcastState() {
+
+    final isPlaying = _player.state.playing;
+    final position = _player.state.position;
+    final buffered = _player.state.buffer;
+    final isBuffering = _player.state.buffering;
+    final isCompleted = _player.state.completed;
+
+    AudioProcessingState processingState;
+    if (isCompleted) {
+      processingState = AudioProcessingState.completed;
+    } else if (isBuffering) {
+      processingState = AudioProcessingState.buffering;
+    } else if (_currentIndex < 0) {
+      processingState = AudioProcessingState.idle;
+    } else {
+      processingState = AudioProcessingState.ready;
+    }
+
+    playbackState.add(PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
-        if (_player.playing) MediaControl.pause else MediaControl.play,
+        if (isPlaying) MediaControl.pause else MediaControl.play,
         MediaControl.stop,
         MediaControl.skipToNext,
       ],
@@ -137,63 +156,42 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seekBackward,
       },
       androidCompactActionIndices: const [0, 1, 3],
-      processingState: const {
-        ProcessingState.idle: AudioProcessingState.idle,
-        ProcessingState.loading: AudioProcessingState.loading,
-        ProcessingState.buffering: AudioProcessingState.buffering,
-        ProcessingState.ready: AudioProcessingState.ready,
-        ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
-      playing: _player.playing,
-      updatePosition: _player.position,
-      bufferedPosition: _player.bufferedPosition,
-      speed: _player.speed,
-      queueIndex: _currentIndex, // Use our tracked index
-      repeatMode: _mapRepeatMode(_player.loopMode),
-      shuffleMode: _player.shuffleModeEnabled
+      processingState: processingState,
+      playing: isPlaying,
+      updatePosition: position,
+      bufferedPosition: buffered,
+      speed: _player.state.rate,
+      queueIndex: _currentIndex,
+      repeatMode: _mapPlaylistModeToRepeatMode(_currentPlaylistMode),
+      shuffleMode: _shuffleEnabled
           ? AudioServiceShuffleMode.all
           : AudioServiceShuffleMode.none,
-    );
+    ));
   }
 
-  AudioServiceRepeatMode _mapRepeatMode(LoopMode mode) {
+  AudioServiceRepeatMode _mapPlaylistModeToRepeatMode(mk.PlaylistMode mode) {
     switch (mode) {
-      case LoopMode.off:
-        return AudioServiceRepeatMode.none;
-      case LoopMode.one:
-        return AudioServiceRepeatMode.one;
-      case LoopMode.all:
-        return AudioServiceRepeatMode.all;
+      case mk.PlaylistMode.none: return AudioServiceRepeatMode.none;
+      case mk.PlaylistMode.single: return AudioServiceRepeatMode.one;
+      case mk.PlaylistMode.loop: return AudioServiceRepeatMode.all;
     }
   }
 
   void _handleTrackCompletion() {
-    print(
-        "DEBUG: _handleTrackCompletion called. LoopMode: ${_player.loopMode}, QueueLen: ${_internalQueue.length}, Index: $_currentIndex");
-
-    // Loop/Next Logic
-    // If repeat mode is ONE, replay
-    if (_player.loopMode == LoopMode.one) {
-      print("DEBUG: LoopMode is ONE. Replaying.");
+    if (_currentPlaylistMode == mk.PlaylistMode.single) {
       _player.seek(Duration.zero);
       _player.play();
     } else {
-      // Standard Playlist Behavior: Advance to next track, don't remove.
       if (_currentIndex < _internalQueue.length - 1) {
         _currentIndex++;
-        print(
-            "DEBUG: Advancing to next track index $_currentIndex: ${_internalQueue[_currentIndex].title}");
         _playQueueItem(_currentIndex);
       } else {
-        // End of queue
-        if (_player.loopMode == LoopMode.all) {
-          print("DEBUG: LoopMode ALL. Looping back to start.");
+        if (_currentPlaylistMode == mk.PlaylistMode.loop) {
           _currentIndex = 0;
           _playQueueItem(0);
         } else {
-          print("DEBUG: End of queue. Stopping.");
           stop();
-          _player.seek(Duration.zero); // Reset to start of track
+          _player.seek(Duration.zero);
         }
       }
     }
@@ -202,216 +200,257 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   // ========== ACTIONS ==========
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    if (_isDashActive && kIsWeb) {
+      DashService.resume();
+      playbackState.add(playbackState.value.copyWith(playing: true, speed: 1.0));
+      return;
+    }
+    _player.play();
+  }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    if (_isDashActive && kIsWeb) {
+      DashService.pause();
+      playbackState.add(playbackState.value.copyWith(playing: false, speed: 0.0));
+      return;
+    }
+    _player.pause();
+  }
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> stop() async {
+    if (kIsWeb) {
+      DashService.stop();
+      _isDashActive = false;
+      _stopPositionPolling();
+    }
+    if (PlatformHelper.isWindows) {
+      DashLocalProxyServer.stop();
+    }
+    await _player.stop();
+    _stopPositionPolling();
+    return super.stop();
+  }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    if (_isDashActive && kIsWeb) {
+      DashService.seek(position.inSeconds.toDouble());
+      playbackState.add(playbackState.value.copyWith(updatePosition: position));
+      return;
+    }
+    return _player.seek(position);
+  }
 
   @override
   Future<void> skipToNext() async {
     if (_internalQueue.isEmpty) return;
-
     int nextIndex = _currentIndex + 1;
-    // Handle repeat all
-    if (_player.loopMode == LoopMode.all) {
-      if (nextIndex >= _internalQueue.length) nextIndex = 0;
+    if (_currentPlaylistMode == mk.PlaylistMode.loop && nextIndex >= _internalQueue.length) {
+      nextIndex = 0;
     }
-
-    if (nextIndex < _internalQueue.length) {
-      await _playQueueItem(nextIndex);
-    }
+    if (nextIndex < _internalQueue.length) await _playQueueItem(nextIndex);
   }
 
   @override
   Future<void> skipToPrevious() async {
     if (_internalQueue.isEmpty) return;
-
-    // If played more than 3 sec, restart
-    if (_player.position.inSeconds > 3) {
-      seek(Duration.zero);
+    if (_player.state.position.inSeconds > 3) {
+      _player.seek(Duration.zero);
       return;
     }
-
     int prevIndex = _currentIndex - 1;
-    if (_player.loopMode == LoopMode.all) {
-      if (prevIndex < 0) prevIndex = _internalQueue.length - 1;
+    if (_currentPlaylistMode == mk.PlaylistMode.loop && prevIndex < 0) {
+      prevIndex = _internalQueue.length - 1;
     }
-
-    if (prevIndex >= 0) {
-      await _playQueueItem(prevIndex);
-    }
+    if (prevIndex >= 0) await _playQueueItem(prevIndex);
   }
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
     switch (repeatMode) {
       case AudioServiceRepeatMode.none:
-        await _player.setLoopMode(LoopMode.off);
+        _currentPlaylistMode = mk.PlaylistMode.none;
         break;
       case AudioServiceRepeatMode.one:
-        await _player.setLoopMode(LoopMode.one);
+        _currentPlaylistMode = mk.PlaylistMode.single;
         break;
       case AudioServiceRepeatMode.all:
-        await _player.setLoopMode(LoopMode.all);
+        _currentPlaylistMode = mk.PlaylistMode.loop;
         break;
       default:
-        await _player.setLoopMode(LoopMode.off);
-        break;
+        _currentPlaylistMode = mk.PlaylistMode.none;
     }
-    // _transformEvent picks up the change via stream
+    await _player.setPlaylistMode(_currentPlaylistMode);
+    _broadcastState();
   }
 
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
     final enabled = shuffleMode == AudioServiceShuffleMode.all;
-    if (enabled) {
-      _shuffleQueue();
-    } else {
-      _unshuffleQueue();
-    }
-    await _player.setShuffleModeEnabled(enabled);
+    _shuffleEnabled = enabled;
+    if (enabled) _shuffleQueue(); else _unshuffleQueue();
+    _broadcastState();
   }
 
-  // Custom action to set the entire queue
   @override
-  Future<void> addQueueItems(List<MediaItem> mediaItems) async {
-    // Left empty as we use setRequestQueue
-  }
+  Future<void> addQueueItems(List<MediaItem> mediaItems) async {}
 
-  // Custom method exposed via dynamic calls or extension
-  Future<void> setRequestQueue(List<Track> tracks,
-      {int pendingIndex = 0}) async {
+  Future<void> setRequestQueue(List<Track> tracks, {int pendingIndex = 0}) async {
     _internalQueue = List.from(tracks);
     _currentIndex = pendingIndex;
-
-    // Update AudioService queue (metadata only)
     final items = tracks.map((t) => _toMediaItem(t)).toList();
     queue.add(items);
-
-    if (_internalQueue.isNotEmpty &&
-        _currentIndex >= 0 &&
-        _currentIndex < _internalQueue.length) {
+    if (_internalQueue.isNotEmpty && _currentIndex >= 0 && _currentIndex < _internalQueue.length) {
       await _playQueueItem(_currentIndex);
     }
   }
 
-  // Play a specific index
   Future<void> _playQueueItem(int index, {Duration? startPosition}) async {
     if (index < 0 || index >= _internalQueue.length) return;
 
     _currentIndex = index;
     final track = _internalQueue[index];
+    final requestId = ++_lastRequestId;
 
-    // Broadcast MediaItem - explicit update
-    final item = _toMediaItem(track);
-    mediaItem.add(item);
-
-    // actually play
+    // "Idle Reset" pattern for DASH thread safety:
+    // Instead of disposing/recreating the player (which leaves zombie threads in
+    // ntdll.dll), we stop + set idle + wait for the OS to reap the DASH demuxer
+    // worker threads before handing it a new source.
+    if (kIsWeb) {
+      DashService.stop();
+    }
     try {
-      // Check local download
+      await _player.stop();
+      // Crucial 500ms delay: allows ntdll.dll to fully reap the DASH segment-
+      // fetching threads and release WASAPI handles + file cache locks.
+      // Without this, the second stream writes to memory the OS still considers
+      // owned by the dying first stream's workers.
+      if (!kIsWeb) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    } catch (e) {
+      print('[AudioHandler] Stop error (ignored): $e');
+    }
+
+    if (requestId != _lastRequestId) return;
+    _isDashActive = false;
+
+    try {
       final isDownloaded = _downloadManager.isDownloaded(track.id);
       final localPath = _downloadManager.getLocalPath(track.id);
+      final bool useLocal = !kIsWeb && isDownloaded && localPath != null && PlatformHelper.fileExists(localPath);
 
-      Uri? audioUri;
+      String? audioUrl;
 
-      if (isDownloaded && localPath != null && File(localPath).existsSync()) {
-        File fileToPlay = File(localPath);
-
-        // Check if FLAC and sanitize for playback
-        if (localPath.toLowerCase().endsWith('.flac')) {
-          try {
-            final dir = fileToPlay.parent;
-
-            // CLEANUP: Aggressively try to delete ALL old playback_safe files
-            // This acts as a lazy GC. Locked files (currently playing) will fail deletion silently.
-            try {
-              final oldSafeFiles = dir.listSync().where((f) =>
-                  f is File &&
-                  f.path.contains('playback_safe_') &&
-                  f.path.endsWith('.flac'));
-
-              for (final oldFile in oldSafeFiles) {
-                try {
-                  oldFile.deleteSync();
-                } catch (_) {
-                  // Locked by player, ignore
-                }
-              }
-            } catch (e) {
-              // Ignore cleanup search errors
-            }
-
-            audioUri = Uri.file(localPath);
-          } catch (e) {
-            print('[AudioHandler] Cleanup failed: $e');
-            audioUri = Uri.file(localPath);
-          }
-        } else {
-          audioUri = Uri.file(localPath);
-        }
+      if (useLocal) {
+        audioUrl = Uri.file(localPath).toString();
+        print('[AudioHandler] Playing local file: $audioUrl');
       } else {
-        // Fetch Stream URL with Retry
         int retries = 0;
         while (retries < 2) {
           try {
-            // Use AddonService to resolve stream URL
-            final url = await _addonService.getStreamUrl(
-              track.id,
-              addonId: track.addonId, 
-              preResolvedUrl: track.streamURL,
-            );
+            final streamResult = await _addonService.getStreamResult(
+              track.addonTrackId ?? track.id, addonId: track.addonId);
+            if (requestId != _lastRequestId) return;
 
-            if (url != null) {
-              audioUri = Uri.parse(url);
+            final url = streamResult?.url;
+            final format = streamResult?.format?.toLowerCase();
+            if (url == null) throw Exception('No stream URL found');
+
+            final bool isDash = (format == 'dash' || url.contains('<MPD') || url.contains('.mpd'));
+
+            if (isDash) {
+              if (requestId != _lastRequestId) return;
+
+              const String proxy = 'https://webdownloadproxy.thevolecitor.workers.dev/?url=';
+
+              if (kIsWeb || PlatformHelper.isWindows) {
+                if (kIsWeb) {
+                  final manifestUri = await DashService.getManifestUri(url, proxy: proxy, trackId: track.id);
+                  DashService.init(manifestUri, proxy);
+                  _isDashActive = true;
+                  _startPositionPolling();
+
+                  final item = _toMediaItem(track);
+                  mediaItem.add(item);
+                  playbackState.add(playbackState.value.copyWith(
+                    playing: true,
+                    speed: 1.0,
+                    processingState: AudioProcessingState.ready,
+                    controls: [MediaControl.skipToPrevious, MediaControl.pause, MediaControl.stop, MediaControl.skipToNext],
+                  ));
+                  return;
+                } else {
+                  DashLocalProxyServer.stop();
+                  final manifest = await DashNativeParser.parse(url);
+                  audioUrl = await DashLocalProxyServer.start(
+                    manifest,
+                    proxyUrl: null, // As requested, do NOT use Cloudflare worker
+                    getPosition: () => _player.state.position.inSeconds.toDouble(),
+                  );
+                  break;
+                }
+              } else {
+                audioUrl = url;
+                break;
+              }
+            } else {
+              if (kIsWeb) DashService.stop();
+              audioUrl = url;
               break;
             }
           } catch (e) {
-            print("Stream fetch retry $retries error: $e");
+            print('[AudioHandler] Stream fetch retry $retries: $e');
           }
           retries++;
           await Future.delayed(const Duration(milliseconds: 500));
         }
       }
 
-      if (audioUri != null) {
-        // Revert to standard AudioSource.uri to avoid Windows file lock crashes
-        final source = AudioSource.uri(
-          audioUri,
-          headers: {'User-Agent': 'BeatBoss/1.0 (Flutter)'},
-          tag: item,
-        );
-
-        await _player.setAudioSource(source, initialPosition: startPosition);
-
-        // ... rest of logic
-        if (Platform.isAndroid) {
-          _audioSessionId = _player.androidAudioSessionId;
-          print("Android Audio Session ID: $_audioSessionId");
-        }
+      if (audioUrl != null && requestId == _lastRequestId) {
+        print('[AudioHandler] Opening media: $audioUrl');
+        final item = _toMediaItem(track);
+        // media_kit: open() replaces the current source cleanly
+        await _player.open(mk.Media(audioUrl), play: false);
+        if (requestId != _lastRequestId) return;
+        if (startPosition != null) await _player.seek(startPosition);
+        if (requestId != _lastRequestId) return;
+        mediaItem.add(item);
         _player.play();
-      } else {
-        print("Error: Failed to get audio URI for track ${track.title}");
-        // Ideally show toast or skip to next?
       }
-    } catch (e) {
-      print("Playback error: $e");
+    } catch (e, st) {
+      print('[AudioHandler] CRITICAL PLAYBACK ERROR: $e');
+      print(st);
+    } finally {
+      print('[AudioHandler] --- Playback Init Complete [ID: $requestId] ---');
     }
   }
 
   MediaItem _toMediaItem(Track track) {
     Uri? artUri;
-    if (track.albumCover != null && track.albumCover!.isNotEmpty) {
-      if (track.albumCover!.startsWith('http')) {
+
+    // ON WINDOWS: The SMTC WinRT bridge throws a C++ exception
+    // (0x80070057: 'null is not a valid absolute URI') if artUri is null.
+    // Always provide a valid HTTPS URI on Windows/Desktop.
+    const winPlaceholderArt =
+        'https://raw.githubusercontent.com/google/material-design-icons/master/png/av/music_note/materialiconsoutlined/48dp/2x/outline_music_note_black_48dp.png';
+
+    if (!kIsWeb && !PlatformHelper.isAndroid) {
+      if (track.albumCover != null &&
+          track.albumCover!.isNotEmpty &&
+          track.albumCover!.startsWith('http')) {
         artUri = Uri.parse(track.albumCover!);
       } else {
-        // Assume local file path or asset
-        artUri = Uri.file(track.albumCover!);
+        artUri = Uri.parse(winPlaceholderArt);
+      }
+    } else {
+      if (track.albumCover != null && track.albumCover!.isNotEmpty) {
+        artUri = track.albumCover!.startsWith('http')
+            ? Uri.parse(track.albumCover!)
+            : Uri.file(track.albumCover!);
       }
     }
 
@@ -426,47 +465,40 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
               : Duration(seconds: track.duration!))
           : null,
       artUri: artUri,
-      extras: {'track': track.toJson()}, // Keep full track data
+      extras: {'track': track.toJson()},
     );
   }
 
   void _shuffleQueue() {
     if (_internalQueue.isEmpty) return;
-
-    final currentTrack =
-        _currentIndex >= 0 ? _internalQueue[_currentIndex] : null;
+    final currentTrack = _currentIndex >= 0 ? _internalQueue[_currentIndex] : null;
     _internalQueue.shuffle();
-
     if (currentTrack != null) {
       _internalQueue.removeWhere((t) => t.id == currentTrack.id);
       _internalQueue.insert(0, currentTrack);
       _currentIndex = 0;
     }
-
-    // Update Queue Stream
     queue.add(_internalQueue.map(_toMediaItem).toList());
   }
 
+  void _unshuffleQueue() {
+    // No-op — we don't store the original order
+  }
+
+  /// Volume: media_kit uses 0–100, callers pass 0.0–1.0
   Future<void> setVolume(double volume) async {
-    await _player.setVolume(volume);
+    await _player.setVolume((volume * 100).clamp(0.0, 100.0));
   }
 
   @override
-  Future<void> skipToQueueItem(int index) async {
-    await _playQueueItem(index);
-  }
+  Future<void> skipToQueueItem(int index) async => await _playQueueItem(index);
 
   Future<void> removeFromQueue(int index) async {
     if (index >= 0 && index < _internalQueue.length) {
       bool isCurrent = index == _currentIndex;
       _internalQueue.removeAt(index);
-      // Update AudioService queue
       queue.add(_internalQueue.map(_toMediaItem).toList());
-
-      if (index < _currentIndex) {
-        _currentIndex--;
-      }
-
+      if (index < _currentIndex) _currentIndex--;
       if (isCurrent) {
         if (_internalQueue.isEmpty) {
           stop();
@@ -483,12 +515,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       await setRequestQueue([track]);
       return;
     }
-
-    final insertIndex = _currentIndex + 1;
-    // Insert after current
-    _internalQueue.insert(insertIndex, track);
-
-    // Update Queue Stream
+    _internalQueue.insert(_currentIndex + 1, track);
     queue.add(_internalQueue.map(_toMediaItem).toList());
   }
 
@@ -497,19 +524,49 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       await setRequestQueue([track]);
       return;
     }
-
     _internalQueue.add(track);
-    
-    // Update Queue Stream without interrupting playback
     queue.add(_internalQueue.map(_toMediaItem).toList());
   }
 
   @override
-  Future<void> onTaskRemoved() async {
-    await stop();
+  Future<void> onTaskRemoved() async => await stop();
+
+  void _startPositionPolling() {
+    if (!kIsWeb) return;
+    _positionTimer?.cancel();
+    _positionTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (_isDashActive) {
+        final pos = DashService.getPosition();
+        final dur = DashService.getDuration();
+        playbackState.add(playbackState.value.copyWith(
+          updatePosition: Duration(seconds: pos.toInt()),
+          speed: 1.0,
+          bufferedPosition: Duration(seconds: pos.toInt() + 10),
+        ));
+        if (dur > 0 && pos >= dur - 0.5) {
+          timer.cancel();
+          skipToNext();
+        }
+      } else {
+        _broadcastState();
+      }
+    });
   }
 
-  void _unshuffleQueue() {
-    // Restore logic if we had original queue
+  void _stopPositionPolling() {
+    _positionTimer?.cancel();
+    _positionTimer = null;
+  }
+
+  @override
+  Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
+    if (name == 'dispose') {
+      for (final sub in _subscriptions) {
+        sub.cancel();
+      }
+      _subscriptions.clear();
+      await _player.dispose();
+      DashLocalProxyServer.stop();
+    }
   }
 }

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="BeatBoss - High-Fidelity Music Player.">
+
+  <title>beatboss</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body { background-color: #0a0a0a; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+    .loading-container { display: flex; flex-direction: column; align-items: center; }
+    .logo { width: 84px; height: 84px; border-radius: 18px; margin-bottom: 32px; }
+    .spinner { width: 28px; height: 28px; border: 3px solid rgba(255, 255, 255, 0.1); border-top-color: rgba(255, 255, 255, 0.8); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="loading-container" id="loading-indicator">
+    <img src="icons/Icon-192.png" alt="BeatBoss" class="logo" />
+    <div class="spinner"></div>
+  </div>
+
+  <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+  <script>
+    // DASH Engine - Simplified for pure playback
+    window.dash_init = function(url, proxyBase) {
+      let player = document.getElementById('dash-audio-element') || document.createElement('audio');
+      player.id = 'dash-audio-element';
+      player.crossOrigin = "anonymous";
+      if (!player.parentElement) document.body.appendChild(player);
+      if (window._currentDashPlayer) window._currentDashPlayer.reset();
+      const dashPlayer = dashjs.MediaPlayer().create();
+      dashPlayer.extend("RequestModifier", function () {
+        return { modifyRequestURL: (url) => url.includes('workers.dev') ? url : proxyBase + encodeURIComponent(url) };
+      }, true);
+      dashPlayer.initialize(player, url, true);
+      window._currentDashPlayer = dashPlayer;
+    };
+
+    window.dash_stop = function() { if (window._currentDashPlayer) window._currentDashPlayer.reset(); };
+    window.dash_pause = function() { if (window._currentDashPlayer) window._currentDashPlayer.pause(); };
+    window.dash_resume = function() { if (window._currentDashPlayer) window._currentDashPlayer.play(); };
+    window.dash_seek = function(t) { if (window._currentDashPlayer) window._currentDashPlayer.seek(t); };
+    window.dash_pos = function() { return window._currentDashPlayer ? window._currentDashPlayer.time() : 0; };
+    window.dash_dur = function() { return window._currentDashPlayer ? window._currentDashPlayer.duration() : 0; };
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

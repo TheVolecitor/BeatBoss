@@ -1,15 +1,12 @@
-import 'dart:io';
 import '../models/models.dart';
-import 'discord_rpc_service_windows.dart';
-import 'discord_rpc_service_noop.dart';
+import 'discord_rpc_factory.dart'; // compile-time conditional: noop on web, io on native
 
+/// Abstract interface for Discord Rich Presence.
+/// Concrete implementations are selected at COMPILE TIME via conditional exports:
+///   - Web / non-Windows native → DiscordRpcServiceNoop (no-op)
+///   - Windows native           → DiscordRpcServiceWindows (win32 pipe)
 abstract class DiscordRpcService {
-  factory DiscordRpcService() {
-    if (Platform.isWindows) {
-      return DiscordRpcServiceWindows();
-    }
-    return DiscordRpcServiceNoop();
-  }
+  factory DiscordRpcService() => _createService();
 
   void initialize();
   void updatePresence({
@@ -21,3 +18,8 @@ abstract class DiscordRpcService {
   void clearPresence();
   void dispose();
 }
+
+// Resolved at compile-time: dart.library.io is false on web/dart2js
+DiscordRpcService _createService() => DiscordRpcFactory.create();
+
+

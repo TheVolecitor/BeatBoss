@@ -59,7 +59,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('Install and configure extensions'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const Scaffold(body: SafeArea(child: AddonsScreen()))));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const Scaffold(
+                              body: SafeArea(child: AddonsScreen()))));
                 },
               ),
             ],
@@ -154,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Version'),
-                subtitle: Text('1.8.5 (Flutter)'),
+                subtitle: Text('1.9.0 (Flutter)'),
               ),
             ],
           ),

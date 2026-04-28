@@ -126,13 +126,9 @@ class AddonService extends ChangeNotifier {
       throw Exception('Failed to fetch manifest from $manifestUrl');
     }
 
-    Map<String, dynamic> data;
-    if (response.data is String) {
-      data = jsonDecode(response.data);
-    } else if (response.data is Map) {
-      data = Map<String, dynamic>.from(response.data);
-    } else {
-      throw Exception('Invalid manifest format');
+    Map<String, dynamic> data = _toMap(response.data);
+    if (data.isEmpty) {
+      throw Exception('Failed to parse manifest: Invalid format or empty response');
     }
 
     // Validate required fields
@@ -176,13 +172,9 @@ class AddonService extends ChangeNotifier {
       throw Exception('Could not reach $manifestUrl');
     }
 
-    Map<String, dynamic> data;
-    if (response.data is String) {
-      data = jsonDecode(response.data);
-    } else if (response.data is Map) {
-      data = Map<String, dynamic>.from(response.data);
-    } else {
-      throw Exception('Invalid manifest format');
+    Map<String, dynamic> data = _toMap(response.data);
+    if (data.isEmpty) {
+      throw Exception('Could not parse manifest data');
     }
 
     return AddonManifest.fromEclipseJson(data, baseUrl: baseUrl);
@@ -241,13 +233,10 @@ class AddonService extends ChangeNotifier {
         },
       );
       if (response.statusCode == 200 && response.data != null) {
-        Map<String, dynamic> data;
-        if (response.data is String) {
-          data = jsonDecode(response.data);
-        } else {
-          data = Map<String, dynamic>.from(response.data);
+        final data = _toMap(response.data);
+        if (data.isNotEmpty) {
+          return AddonSearchResult.fromJson(data, addonId: manifest.id);
         }
-        return AddonSearchResult.fromJson(data, addonId: manifest.id);
       }
     } catch (e) {
       print('[AddonService] Server search error for ${manifest.id}: $e');
@@ -422,8 +411,11 @@ class AddonService extends ChangeNotifier {
         '${manifest.baseUrl}/lyrics',
         queryParameters: {'artist': artist, 'title': title},
       );
-      if (response.data != null && response.data['lyrics'] != null) {
-        return response.data['lyrics'].toString();
+      if (response.data != null) {
+        final data = _toMap(response.data);
+        if (data.containsKey('lyrics')) {
+          return data['lyrics'].toString();
+        }
       }
     } catch (_) {}
     return null;
@@ -476,8 +468,15 @@ class AddonService extends ChangeNotifier {
     try {
       final response = await _dio.get('${manifest.baseUrl}/libraries');
       if (response.statusCode == 200 && response.data != null) {
-        final List<dynamic> list = response.data;
-        return list.map((l) => MusicLibrary.fromJson(l)).toList();
+        if (response.data is List) {
+          final List<dynamic> list = response.data;
+          return list.map((l) => MusicLibrary.fromJson(l)).toList();
+        } else if (response.data is String && response.data.trim().startsWith('[')) {
+          try {
+            final List<dynamic> list = jsonDecode(response.data);
+            return list.map((l) => MusicLibrary.fromJson(l)).toList();
+          } catch (_) {}
+        }
       }
     } catch (e) {
       print('[AddonService] Server getLibraries error for ${manifest.id}: $e');
@@ -500,8 +499,15 @@ class AddonService extends ChangeNotifier {
     try {
       final response = await _dio.get('${manifest.baseUrl}/libraries/$libraryId');
       if (response.statusCode == 200 && response.data != null) {
-        final List<dynamic> list = response.data;
-        return list.map((t) => Track.fromJson(t)).toList();
+        if (response.data is List) {
+          final List<dynamic> list = response.data;
+          return list.map((t) => Track.fromJson(t)).toList();
+        } else if (response.data is String && response.data.trim().startsWith('[')) {
+          try {
+            final List<dynamic> list = jsonDecode(response.data);
+            return list.map((t) => Track.fromJson(t)).toList();
+          } catch (_) {}
+        }
       }
     } catch (e) {
       print('[AddonService] Server getLibraryTracks error for ${manifest.id}: $e');
@@ -640,8 +646,14 @@ class AddonService extends ChangeNotifier {
   }
 
   Map<String, dynamic> _toMap(dynamic data) {
-    if (data is Map) return Map<String, dynamic>.from(data);
-    if (data is String) return jsonDecode(data);
+    try {
+      if (data is Map) return Map<String, dynamic>.from(data);
+      if (data is String && data.trim().startsWith('{')) {
+        return jsonDecode(data);
+      }
+    } catch (e) {
+      print('[AddonService] JSON decode error: $e');
+    }
     return {};
   }
 
