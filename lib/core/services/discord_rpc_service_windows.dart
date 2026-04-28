@@ -81,7 +81,7 @@ class DiscordRpcServiceWindows implements DiscordRpcService {
       'details': _truncate(track.title, 120),
       'state': _truncate(track.artist, 120),
       'assets': {
-        'large_image': 'logo', 
+        'large_image': track.albumCover ?? 'logo',
         'large_text': _truncate(track.albumTitle ?? 'BeatBoss', 120),
         'small_image': isPlaying ? 'play' : 'pause',
         'small_text': isPlaying ? 'Playing' : 'Paused',
