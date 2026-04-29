@@ -91,6 +91,7 @@ Future<void> writeNativeMetadata(String filePath, Track track, Dio dio) async {
             print('[Metadata] Error fetching cover art for FLAC: $e');
           }
         }
+        final durationSecs = track.duration != null ? (track.duration! > 10000 ? track.duration! ~/ 1000 : track.duration!) : 0;
         await FlacUtils.injectMetadataAndFix(
           safeFile,
           title: track.title,
@@ -98,6 +99,7 @@ Future<void> writeNativeMetadata(String filePath, Track track, Dio dio) async {
           album: track.albumTitle,
           coverBytes: coverBytes,
           coverMimeType: coverMime,
+          durationSeconds: durationSecs,
         );
         print('[Metadata] FLAC tags written successfully via FlacUtils');
       } else {
@@ -270,10 +272,23 @@ Future<bool> downloadDashTrack({
   }
 }
 
-/// Rename a file from [from] to [to].
-Future<void> renameFile(String from, String to) async {
-  final file = File(from);
-  await file.rename(to);
+/// Walk the raw FLAC metadata block bytes and clear the isLast bit on the
+/// final block, so additional blocks can be appended by FlacUtils.
+void _clearLastBlockFlag(Uint8List meta) {
+  int offset = 0;
+  int lastBlockOffset = -1;
+  while (offset + 4 <= meta.length) {
+    final headerByte = meta[offset];
+    final isLast = (headerByte & 0x80) != 0;
+    final length =
+        (meta[offset + 1] << 16) | (meta[offset + 2] << 8) | meta[offset + 3];
+    lastBlockOffset = offset;
+    if (isLast) break;
+    offset += 4 + length;
+  }
+  if (lastBlockOffset != -1) {
+    meta[lastBlockOffset] = meta[lastBlockOffset] & 0x7F;
+  }
 }
 
 /// Trigger web download — no-op on native.

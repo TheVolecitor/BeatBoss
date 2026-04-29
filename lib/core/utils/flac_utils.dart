@@ -12,7 +12,6 @@ import 'dart:typed_data';
 /// 5. Rebuild: magic + STREAMINFO (with total_samples=0) + new tags + remaining
 ///    blocks + raw audio — all in Dart, zero TagLib/AudioTags involved.
 class FlacUtils {
-
   // ──────────────────────────────────────────────────────────────────────────
   // Public API
   // ──────────────────────────────────────────────────────────────────────────
@@ -26,6 +25,7 @@ class FlacUtils {
     String? album,
     Uint8List? coverBytes,
     String coverMimeType = 'image/jpeg',
+    int? durationSeconds,
   }) async {
     print('[FlacUtils] Injecting metadata into: ${file.path}');
     try {
@@ -49,7 +49,8 @@ class FlacUtils {
       }
 
       final audioStart = analysis.declaredEnd;
-      print('[FlacUtils] Audio payload starts at byte $audioStart (${bytes.length - audioStart} bytes)');
+      print(
+          '[FlacUtils] Audio payload starts at byte $audioStart (${bytes.length - audioStart} bytes)');
 
       // 3. Build new metadata block list:
       //    - Keep STREAMINFO (type 0), SEEKTABLE (3), CUESHEET (5)
@@ -76,18 +77,26 @@ class FlacUtils {
         keepBlocks.add(picBlock);
       }
 
-      // 6. Patch STREAMINFO: set total_samples to 0 (unknown) so players read to EOF
+      // 6. Patch STREAMINFO: calculate total_samples if duration provided so players see seek bar
       final patchedBlocks = keepBlocks.map((b) {
         if (b.type != 0) return b;
         final d = Uint8List.fromList(b.data);
         // Bits 108-143 of STREAMINFO = bytes 13-17 of the data payload.
-        // Byte 13, bits [3:0] = top 4 bits of total_samples. Keep upper nibble (MD5 sample size field overlaps).
         if (d.length >= 18) {
-          d[13] = d[13] & 0xF0; // preserve sample-size bits, zero top of total_samples
-          d[14] = 0;
-          d[15] = 0;
-          d[16] = 0;
-          d[17] = 0;
+          // Extract sample rate: bits 80-99 (Bytes 10, 11, and bits [7:4] of Byte 12)
+          int sampleRate = (d[10] << 12) | (d[11] << 4) | ((d[12] & 0xF0) >> 4);
+          if (sampleRate == 0) sampleRate = 44100; // Fallback
+
+          int totalSamples = 0;
+          if (durationSeconds != null && durationSeconds > 0) {
+            totalSamples = durationSeconds * sampleRate;
+          }
+
+          d[13] = (d[13] & 0xF0) | ((totalSamples >> 32) & 0x0F);
+          d[14] = (totalSamples >> 24) & 0xFF;
+          d[15] = (totalSamples >> 16) & 0xFF;
+          d[16] = (totalSamples >> 8) & 0xFF;
+          d[17] = totalSamples & 0xFF;
         }
         return _MetadataBlock(type: 0, data: d, offset: b.offset);
       }).toList();
@@ -112,7 +121,8 @@ class FlacUtils {
       output.add(bytes.sublist(audioStart));
 
       final rebuilt = output.takeBytes();
-      print('[FlacUtils] Rebuilt ${rebuilt.length} bytes (original: ${bytes.length})');
+      print(
+          '[FlacUtils] Rebuilt ${rebuilt.length} bytes (original: ${bytes.length})');
 
       // 8. Write via temp file to avoid partial-write corruption
       final tempFile = File('${file.path}.flactmp');
@@ -173,12 +183,13 @@ class FlacUtils {
   /// Builds a FLAC PICTURE block (type 6) for cover art.
   ///
   /// Spec: https://xiph.org/flac/format.html#metadata_block_picture
-  static _MetadataBlock _buildPictureBlock(Uint8List imageBytes, String mimeType) {
+  static _MetadataBlock _buildPictureBlock(
+      Uint8List imageBytes, String mimeType) {
     final mimeBytes = utf8.encode(mimeType);
     final descBytes = utf8.encode(''); // empty description
 
     final builder = BytesBuilder();
-    _writeUint32BE(builder, 3);                // picture type: Cover (front)
+    _writeUint32BE(builder, 3); // picture type: Cover (front)
     _writeUint32BE(builder, mimeBytes.length); // MIME length
     builder.add(mimeBytes);
     _writeUint32BE(builder, descBytes.length); // description length
@@ -225,13 +236,15 @@ class FlacUtils {
       offset += 4;
 
       if (offset + length > bytes.length) {
-        print('[FlacUtils] Truncated block at offset $offset (type $type, length $length)');
+        print(
+            '[FlacUtils] Truncated block at offset $offset (type $type, length $length)');
         return null;
       }
 
       final data = Uint8List.fromList(bytes.sublist(offset, offset + length));
       blocks.add(_MetadataBlock(type: type, data: data, offset: offset - 4));
-      print('[FlacUtils] Block type=${_blockTypeName(type)} len=$length isLast=$isLast');
+      print(
+          '[FlacUtils] Block type=${_blockTypeName(type)} len=$length isLast=$isLast');
 
       offset += length;
     }
@@ -241,14 +254,22 @@ class FlacUtils {
 
   static String _blockTypeName(int type) {
     switch (type) {
-      case 0: return 'STREAMINFO';
-      case 1: return 'PADDING';
-      case 2: return 'APPLICATION';
-      case 3: return 'SEEKTABLE';
-      case 4: return 'VORBIS_COMMENT';
-      case 5: return 'CUESHEET';
-      case 6: return 'PICTURE';
-      default: return 'UNKNOWN($type)';
+      case 0:
+        return 'STREAMINFO';
+      case 1:
+        return 'PADDING';
+      case 2:
+        return 'APPLICATION';
+      case 3:
+        return 'SEEKTABLE';
+      case 4:
+        return 'VORBIS_COMMENT';
+      case 5:
+        return 'CUESHEET';
+      case 6:
+        return 'PICTURE';
+      default:
+        return 'UNKNOWN($type)';
     }
   }
 }
@@ -257,7 +278,8 @@ class _MetadataBlock {
   final int type;
   final Uint8List data;
   final int offset;
-  _MetadataBlock({required this.type, required this.data, required this.offset});
+  _MetadataBlock(
+      {required this.type, required this.data, required this.offset});
 }
 
 class _MetadataAnalysis {

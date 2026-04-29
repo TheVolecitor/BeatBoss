@@ -3,8 +3,7 @@ import 'package:flutter/foundation.dart'; // kIsWeb
 import '../utils/platform_helper.dart';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:media_kit/media_kit.dart' as mk;
-
+import 'package:just_audio/just_audio.dart';
 
 import '../models/models.dart';
 import 'download_manager_service.dart';
@@ -14,14 +13,11 @@ import 'dash_native_parser.dart';
 import 'dash_local_proxy_server.dart';
 import 'native_player_config.dart';
 
-
 /// The AudioHandler manages the audio player and the playlist.
 /// It exposes the standard AudioService interface to the UI (and system).
-/// Uses media_kit Player directly — no just_audio shim.
+/// Uses just_audio Player directly.
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
-  // Single stable media_kit Player — never recreated.
-  // open() atomically replaces the current source without needing disposal.
-  final mk.Player _player;
+  late final AudioPlayer _player;
   final DownloadManagerService _downloadManager;
   final AddonService _addonService;
 
@@ -32,26 +28,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Timer? _positionTimer;
   int _lastRequestId = 0;
 
-  // Loop/Shuffle tracked internally (media_kit PlaylistMode)
-  mk.PlaylistMode _currentPlaylistMode = mk.PlaylistMode.none;
-  bool _shuffleEnabled = false;
-
   final List<StreamSubscription> _subscriptions = [];
 
   AppAudioHandler({
     required DownloadManagerService downloadManager,
     required AddonService addonService,
-  })  : _player = mk.Player(
-          configuration: mk.PlayerConfiguration(
-            title: 'BeatBoss',
-            logLevel: mk.MPVLogLevel.error,
-            protocolWhitelist: [
-              'udp', 'rtp', 'tcp', 'tls', 'data', 'file',
-              'http', 'https', 'crypto', 'httpproxy',
-            ],
-          ),
-        ),
-        _downloadManager = downloadManager,
+  })  : _downloadManager = downloadManager,
         _addonService = addonService {
     _init();
   }
@@ -59,27 +41,20 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   // Expose explicit state for UI polling
   Duration get currentPosition {
     if (_isDashActive) return playbackState.value.position;
-    return _player.state.position;
+    return _player.position;
   }
 
   bool get isPlayerPlaying {
     if (_isDashActive) return playbackState.value.playing;
-    return _player.state.playing;
+    return _player.playing;
   }
 
   Future<void> _init() async {
-    // Cleanup old temp files from previous sessions (native only)
+    _player = AudioPlayer();
+    
     if (!kIsWeb) {
       _downloadManager.cleanupTemporaryFiles();
     }
-
-    // Set mpv properties via NativePlayer API for reliable DASH playback.
-    // DASH is thread-heavy (multiple segment-fetching workers). These settings
-    // prevent the file-lock and thread-reaping crashes on Windows.
-    if (!kIsWeb) {
-      configureNativePlayer(_player);
-    }
-
 
     _setupPlayerListeners();
   }
@@ -93,30 +68,20 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
     // Subscribe to media_kit streams and push PlaybackState to audio_service
     _subscriptions.addAll([
-      _player.stream.playing.listen((_) => _broadcastState()),
-      _player.stream.position.listen((_) => _broadcastState()),
-      _player.stream.buffer.listen((_) => _broadcastState()),
-      _player.stream.buffering.listen((_) => _broadcastState()),
-      _player.stream.duration.listen((_) => _broadcastState()),
-      _player.stream.completed.listen((completed) {
-        if (completed) _handleTrackCompletion();
+      _player.playingStream.listen((_) => _broadcastState()),
+      _player.positionStream.listen((_) => _broadcastState()),
+      _player.bufferedPositionStream.listen((_) => _broadcastState()),
+      _player.playerStateStream.listen((state) {
+        _broadcastState();
+        if (state.processingState == ProcessingState.completed) {
+          _handleTrackCompletion();
+        }
       }),
-      _player.stream.error.listen((error) {
-        // LOG ONLY — do NOT auto-retry.
-        // Transient TCP errors (WSAECONNABORTED, TLS reconnect) are common during
-        // DASH segment fetching and are non-fatal. MPV reconnects automatically.
-        // The old auto-recovery here was the actual cause of the crash:
-        // it called _playQueueItem → dispose → recreate → seek into unloaded DASH → crash.
-        print('[AudioHandler] MPV Error (non-fatal, no auto-retry): $error');
-      }),
-      _player.stream.log.listen((log) {
-        print('MPV: [${log.level}] ${log.prefix}: ${log.text}');
-      }),
+      _player.durationStream.listen((_) => _broadcastState()),
     ]);
 
-    // Web: position polling for DASH seek bar
     if (kIsWeb) {
-      _subscriptions.add(_player.stream.playing.listen((playing) {
+      _subscriptions.add(_player.playingStream.listen((playing) {
         if (playing) _startPositionPolling();
         else _stopPositionPolling();
       }));
@@ -125,12 +90,11 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Broadcasts current player state to audio_service (SMTC / Bluetooth / UI)
   void _broadcastState() {
-
-    final isPlaying = _player.state.playing;
-    final position = _player.state.position;
-    final buffered = _player.state.buffer;
-    final isBuffering = _player.state.buffering;
-    final isCompleted = _player.state.completed;
+    final isPlaying = _player.playing;
+    final position = _player.position;
+    final buffered = _player.bufferedPosition;
+    final isBuffering = _player.playerState.processingState == ProcessingState.buffering;
+    final isCompleted = _player.playerState.processingState == ProcessingState.completed;
 
     AudioProcessingState processingState;
     if (isCompleted) {
@@ -160,25 +124,25 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       playing: isPlaying,
       updatePosition: position,
       bufferedPosition: buffered,
-      speed: _player.state.rate,
+      speed: _player.speed,
       queueIndex: _currentIndex,
-      repeatMode: _mapPlaylistModeToRepeatMode(_currentPlaylistMode),
-      shuffleMode: _shuffleEnabled
+      repeatMode: _mapLoopModeToRepeatMode(_player.loopMode),
+      shuffleMode: _player.shuffleModeEnabled
           ? AudioServiceShuffleMode.all
           : AudioServiceShuffleMode.none,
     ));
   }
 
-  AudioServiceRepeatMode _mapPlaylistModeToRepeatMode(mk.PlaylistMode mode) {
+  AudioServiceRepeatMode _mapLoopModeToRepeatMode(LoopMode mode) {
     switch (mode) {
-      case mk.PlaylistMode.none: return AudioServiceRepeatMode.none;
-      case mk.PlaylistMode.single: return AudioServiceRepeatMode.one;
-      case mk.PlaylistMode.loop: return AudioServiceRepeatMode.all;
+      case LoopMode.off: return AudioServiceRepeatMode.none;
+      case LoopMode.one: return AudioServiceRepeatMode.one;
+      case LoopMode.all: return AudioServiceRepeatMode.all;
     }
   }
 
   void _handleTrackCompletion() {
-    if (_currentPlaylistMode == mk.PlaylistMode.single) {
+    if (_player.loopMode == LoopMode.one) {
       _player.seek(Duration.zero);
       _player.play();
     } else {
@@ -186,7 +150,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         _currentIndex++;
         _playQueueItem(_currentIndex);
       } else {
-        if (_currentPlaylistMode == mk.PlaylistMode.loop) {
+        if (_player.loopMode == LoopMode.all) {
           _currentIndex = 0;
           _playQueueItem(0);
         } else {
@@ -226,7 +190,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       _isDashActive = false;
       _stopPositionPolling();
     }
-    if (PlatformHelper.isWindows) {
+    if (!kIsWeb && (PlatformHelper.isWindows || PlatformHelper.isLinux)) {
       DashLocalProxyServer.stop();
     }
     await _player.stop();
@@ -248,7 +212,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> skipToNext() async {
     if (_internalQueue.isEmpty) return;
     int nextIndex = _currentIndex + 1;
-    if (_currentPlaylistMode == mk.PlaylistMode.loop && nextIndex >= _internalQueue.length) {
+    if (_player.loopMode == LoopMode.all && nextIndex >= _internalQueue.length) {
       nextIndex = 0;
     }
     if (nextIndex < _internalQueue.length) await _playQueueItem(nextIndex);
@@ -257,12 +221,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> skipToPrevious() async {
     if (_internalQueue.isEmpty) return;
-    if (_player.state.position.inSeconds > 3) {
+    if (_player.position.inSeconds > 3) {
       _player.seek(Duration.zero);
       return;
     }
     int prevIndex = _currentIndex - 1;
-    if (_currentPlaylistMode == mk.PlaylistMode.loop && prevIndex < 0) {
+    if (_player.loopMode == LoopMode.all && prevIndex < 0) {
       prevIndex = _internalQueue.length - 1;
     }
     if (prevIndex >= 0) await _playQueueItem(prevIndex);
@@ -272,26 +236,24 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
     switch (repeatMode) {
       case AudioServiceRepeatMode.none:
-        _currentPlaylistMode = mk.PlaylistMode.none;
+        await _player.setLoopMode(LoopMode.off);
         break;
       case AudioServiceRepeatMode.one:
-        _currentPlaylistMode = mk.PlaylistMode.single;
+        await _player.setLoopMode(LoopMode.one);
         break;
       case AudioServiceRepeatMode.all:
-        _currentPlaylistMode = mk.PlaylistMode.loop;
+        await _player.setLoopMode(LoopMode.all);
         break;
       default:
-        _currentPlaylistMode = mk.PlaylistMode.none;
+        await _player.setLoopMode(LoopMode.off);
     }
-    await _player.setPlaylistMode(_currentPlaylistMode);
     _broadcastState();
   }
 
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
     final enabled = shuffleMode == AudioServiceShuffleMode.all;
-    _shuffleEnabled = enabled;
-    if (enabled) _shuffleQueue(); else _unshuffleQueue();
+    await _player.setShuffleModeEnabled(enabled);
     _broadcastState();
   }
 
@@ -367,7 +329,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
               const String proxy = 'https://webdownloadproxy.thevolecitor.workers.dev/?url=';
 
-              if (kIsWeb || PlatformHelper.isWindows) {
+              if (kIsWeb || PlatformHelper.isWindows || PlatformHelper.isLinux) {
                 if (kIsWeb) {
                   final manifestUri = await DashService.getManifestUri(url, proxy: proxy, trackId: track.id);
                   DashService.init(manifestUri, proxy);
@@ -389,7 +351,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
                   audioUrl = await DashLocalProxyServer.start(
                     manifest,
                     proxyUrl: null, // As requested, do NOT use Cloudflare worker
-                    getPosition: () => _player.state.position.inSeconds.toDouble(),
+                    getPosition: () => _player.position.inSeconds.toDouble(),
                   );
                   break;
                 }
@@ -413,10 +375,14 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       if (audioUrl != null && requestId == _lastRequestId) {
         print('[AudioHandler] Opening media: $audioUrl');
         final item = _toMediaItem(track);
-        // media_kit: open() replaces the current source cleanly
-        await _player.open(mk.Media(audioUrl), play: false);
-        if (requestId != _lastRequestId) return;
-        if (startPosition != null) await _player.seek(startPosition);
+
+        final source = AudioSource.uri(
+          Uri.parse(audioUrl),
+          headers: {'User-Agent': 'BeatBoss/1.0 (Flutter)'},
+          tag: item,
+        );
+
+        await _player.setAudioSource(source, initialPosition: startPosition);
         if (requestId != _lastRequestId) return;
         mediaItem.add(item);
         _player.play();
@@ -485,9 +451,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     // No-op — we don't store the original order
   }
 
-  /// Volume: media_kit uses 0–100, callers pass 0.0–1.0
+  /// Volume: callers pass 0.0–1.0
   Future<void> setVolume(double volume) async {
-    await _player.setVolume((volume * 100).clamp(0.0, 100.0));
+    await _player.setVolume(volume.clamp(0.0, 1.0));
   }
 
   @override
