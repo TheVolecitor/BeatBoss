@@ -6,8 +6,7 @@ import 'package:provider/provider.dart';
 import 'core/utils/hive/hive_provider.dart';
 
 import 'package:audio_service/audio_service.dart';
-
-
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/settings_service.dart';
 import 'core/services/audio_player_service.dart';
@@ -35,6 +34,7 @@ void main() async {
     // Initialize media_kit (required before creating any Player)
     if (!kIsWeb) PlatformHelper.ensureMpvConfig();
     MediaKit.ensureInitialized();
+    if (!kIsWeb) JustAudioMediaKit.ensureInitialized();
 
     // Initialize Hive for local storage
     await Hive.initFlutter();
