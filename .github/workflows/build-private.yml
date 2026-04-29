@@ -1,0 +1,98 @@
+name: Android & Linux Build (Private)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "private" ]
+
+jobs:
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Universal APK
+        run: flutter build apk
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeatBoss-Android-Universal-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
+
+  linux:
+    name: Build Linux Installers
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            libwebkit2gtk-4.1-dev \
+            libsecret-1-dev \
+            libmpv-dev \
+            libasound2-dev \
+            libdbus-1-dev \
+            appstream \
+            libfuse2
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Flutter Distributor
+        run: dart pub global activate flutter_distributor
+
+      - name: Install appimagetool
+        run: |
+          wget -O appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          sudo mv appimagetool /usr/local/bin/
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable Linux Desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build and Package
+        run: |
+          export PATH="$PATH":"$HOME/.pub-cache/bin"
+          flutter_distributor release --name production --jobs linux-deb,linux-appimage
+
+      - name: Upload Installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeatBoss-Linux-Installers
+          path: |
+            dist/*/*.deb
+            dist/*/*.AppImage
+          retention-days: 7

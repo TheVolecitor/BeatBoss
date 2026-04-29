@@ -65,6 +65,7 @@ dependencies:
   just_audio: ^0.10.5
   xml: ^6.6.1
   just_audio_windows: ^0.2.3
+  just_audio_media_kit: ^2.1.0
   # metadata_god: ^1.1.0
 
 dev_dependencies:

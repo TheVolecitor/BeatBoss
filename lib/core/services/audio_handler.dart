@@ -27,6 +27,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   bool _isDashActive = false;
   Timer? _positionTimer;
   int _lastRequestId = 0;
+  bool _isSwitchingTrack = false;
 
   final List<StreamSubscription> _subscriptions = [];
 
@@ -73,6 +74,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       _player.bufferedPositionStream.listen((_) => _broadcastState()),
       _player.playerStateStream.listen((state) {
         _broadcastState();
+        if (state.processingState == ProcessingState.ready) {
+          _isSwitchingTrack = false;
+        }
         if (state.processingState == ProcessingState.completed) {
           _handleTrackCompletion();
         }
@@ -142,6 +146,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _handleTrackCompletion() {
+    if (_isSwitchingTrack) return;
     if (_player.loopMode == LoopMode.one) {
       _player.seek(Duration.zero);
       _player.play();
@@ -276,6 +281,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     _currentIndex = index;
     final track = _internalQueue[index];
     final requestId = ++_lastRequestId;
+    _isSwitchingTrack = true;
 
     // "Idle Reset" pattern for DASH thread safety:
     // Instead of disposing/recreating the player (which leaves zombie threads in
