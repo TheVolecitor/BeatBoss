@@ -195,7 +195,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       _isDashActive = false;
       _stopPositionPolling();
     }
-    if (!kIsWeb && PlatformHelper.isWindows) {
+    if (!kIsWeb && (PlatformHelper.isWindows || PlatformHelper.isLinux)) {
       DashLocalProxyServer.stop();
     }
     await _player.stop();
@@ -335,7 +335,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
               const String proxy = 'https://webdownloadproxy.thevolecitor.workers.dev/?url=';
 
-              if (kIsWeb || PlatformHelper.isWindows) {
+              if (kIsWeb || PlatformHelper.isWindows || PlatformHelper.isLinux) {
                 if (kIsWeb) {
                   final manifestUri = await DashService.getManifestUri(url, proxy: proxy, trackId: track.id);
                   DashService.init(manifestUri, proxy);
