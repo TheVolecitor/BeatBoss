@@ -1,6 +1,6 @@
 # Addon Development Guide
 
-This guide explains how to develop addons for the application. Addons are external HTTP servers that follow the Eclipse Music spec that allow developers to extend the application's capabilities by providing search results, metadata, lyrics, and synchronization services.
+This guide explains how to develop addons for the application. Addons are external HTTP servers that follow the BeatBoss and Eclipse Music spec that allow developers to extend the application's capabilities by providing search results, metadata, lyrics, and library sync.
 
 ---
 
