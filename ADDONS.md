@@ -32,8 +32,11 @@ Every addon must provide a `manifest.json` at its base URL.
 | `description`| String | (Optional) Short description of the addon. |
 | `icon` | String | (Optional) URL to a square icon image. |
 | `contentType`| String | `music`, `audiobook`, or `podcast`. Defaults to `music`. |
-| `types` | Array | Supported content types: `track`, `album`, `artist`, `playlist`. |
-| `resources` | Array | Capabilities: `search`, `stream`, `catalog`, `lyrics`, `library`. |
+| `types` | Array | (Optional) Supported types: `track`, `album`, `artist`, `playlist`. |
+| `resources` | Array | (Optional) Capabilities: `search`, `stream`, `catalog`, `lyrics`, `library`. |
+
+> [!NOTE]
+> `types` and `resources` are optional. An addon only needs to implement what it provides. For example, a "stream-only" addon does not need to provide lyrics or catalog data; the application will automatically use other installed addons or built-in services (like the default lyrics provider) as fallbacks.
 
 ---
 
@@ -52,18 +55,42 @@ The response should contain arrays for the requested types.
 {
   "tracks": [
     {
-      "id": "track_123",
-      "title": "Song Title",
-      "artist": "Artist Name",
-      "album": "Album Name",
+      "id": "track_101",
+      "title": "Starlight Harmony",
+      "artist": "Echo Voyager",
+      "album": "Celestial Echoes",
       "duration": 240,
-      "artworkURL": "https://example.com/cover.jpg",
-      "streamURL": "https://server.com/direct_stream.mp3",
+      "artworkURL": "https://example.com/images/star.jpg",
+      "streamURL": "https://example.com/streams/audio_file.mp3",
       "format": "mp3"
     }
   ],
-  "albums": [],
-  "artists": [],
+  "albums": [
+    {
+      "id": "album_201",
+      "name": "The Plan",
+      "image": "https://example.com/images/plan_cover.jpg",
+      "year": "2018"
+    },
+    {
+      "id": "album_202",
+      "name": "Retrograde Reality",
+      "image": "https://example.com/images/retro_cover.jpg",
+      "year": "1993"
+    }
+  ],
+  "artists": [
+    {
+      "id": "artist_301",
+      "name": "The Sound Architects",
+      "image": "https://example.com/images/architects.jpg"
+    },
+    {
+      "id": "artist_302",
+      "name": "Digital Dreamers",
+      "image": "https://example.com/images/dreamers.jpg"
+    }
+  ],
   "playlists": []
 }
 ```
@@ -165,5 +192,5 @@ Enables cross-device synchronization of user libraries.
 
 - **CORS**: Ensure your server supports Cross-Origin Resource Sharing if the addon is accessed from a web-based version of the app.
 - **Errors**: Return appropriate HTTP status codes (404 for not found, 500 for server errors).
-- **Security**: The app currently does not send authentication headers to addons. If your addon requires auth, consider using a token in the Base URL (e.g., `https://addon.com/api?key=xyz`).
+- **Security**: The app currently does not send authentication headers to addons. If your addon requires auth, consider using a token in the Base URL (e.g., `https://addon.com/token/manifest.json`).
 
