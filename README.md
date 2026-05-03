@@ -2,7 +2,7 @@
 
 BeatBoss is a high performance cross platform music player client designed for audiophiles. Built with Flutter, it delivers a native, responsive experience on both Windows and Android.
 
-Note: This project has been migrated from Flet (Python) to Flutter to resolve stability issues and ensure a robust, native performance across platforms.
+Note: BeatBoss supports [EclipseMusic](https://eclipsemusic.app/addons) addons too, or any addon based player that uses the standard manifest format like stremio.
 
 ## Features
 
