@@ -1,0 +1,40 @@
+name: macOS Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    name: Build macOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable macOS Desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build macOS App
+        run: flutter build macos --release
+
+      - name: Compress App Bundle
+        run: |
+          cd build/macos/Build/Products/Release/
+          zip -r BeatBoss-macOS.zip *.app
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeatBoss-macOS
+          path: build/macos/Build/Products/Release/BeatBoss-macOS.zip
+          retention-days: 7
