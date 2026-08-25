@@ -1,8 +1,6 @@
 name: Android & Linux Build (Private)
 on:
   workflow_dispatch:
-  push:
-    branches: [ "private" ]
 
 jobs:
   android:

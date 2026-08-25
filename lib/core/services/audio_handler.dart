@@ -326,7 +326,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
             final url = streamResult?.url;
             final format = streamResult?.format?.toLowerCase();
-            if (url == null) throw Exception('No stream URL found');
+            if (url == null || url.trim().isEmpty) throw Exception('No stream URL found');
 
             final bool isDash = (format == 'dash' || url.contains('<MPD') || url.contains('.mpd'));
 
@@ -378,7 +378,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         }
       }
 
-      if (audioUrl != null && requestId == _lastRequestId) {
+      if (audioUrl != null && audioUrl.trim().isNotEmpty && requestId == _lastRequestId) {
         print('[AudioHandler] Opening media: $audioUrl');
         final item = _toMediaItem(track);
 
@@ -392,6 +392,8 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         if (requestId != _lastRequestId) return;
         mediaItem.add(item);
         _player.play();
+      } else if (requestId == _lastRequestId) {
+        print('[AudioHandler] Failed to resolve playable audio URL for track: ${track.title}');
       }
     } catch (e, st) {
       print('[AudioHandler] CRITICAL PLAYBACK ERROR: $e');

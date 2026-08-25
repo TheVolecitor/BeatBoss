@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'dash_service_stub.dart'
     if (dart.library.js_interop) 'dash_service_web.dart' as impl;
 
