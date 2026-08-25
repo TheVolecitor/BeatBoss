@@ -31,8 +31,7 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  flutter_install_macos_engine_pod
-  flutter_install_plugin_pods
+  flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
 end
 
 post_install do |installer|
