@@ -3,12 +3,20 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/models.dart';
 
 class LastFmService extends ChangeNotifier {
   // Use Worker URL
   static const String _baseUrl =
       'https://beatboss-lastfm.thevolecitor.workers.dev/';
+
+  // Public Last.fm API key (not the shared secret, which stays in the Worker).
+  // Needed to build the browser authorization URL.
+  static const String _apiKey = String.fromEnvironment(
+    'LASTFM_API_KEY',
+    defaultValue: '7d6a92823fced791fdb57b926c54d47d',
+  );
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
@@ -17,6 +25,9 @@ class LastFmService extends ChangeNotifier {
   );
   String? _sessionKey;
   String? _username;
+
+  /// Reason the last [startAuth] call failed, for display in the UI.
+  String? lastAuthError;
 
   bool get isAuthenticated => _sessionKey != null;
   String? get username => _username;
@@ -27,25 +38,63 @@ class LastFmService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Authenticate using username and password (Mobile Session) via Worker
-  Future<bool> login(String username, String password) async {
-    final params = {
-      'method': 'auth.getMobileSession',
-      'username': username,
-      'password': password,
-    };
+  /// Step 1 of the web auth flow: request a token via Worker and open the
+  /// Last.fm authorization page in the browser. Returns the token to pass to
+  /// [completeAuth] once the user has approved access, or null on failure.
+  Future<String?> startAuth() async {
+    lastAuthError = null;
+    if (_apiKey.isEmpty) {
+      lastAuthError = 'Last.fm API key missing. Build with '
+          '--dart-define=LASTFM_API_KEY=<key>';
+      print('Last.fm Auth Error: $lastAuthError');
+      return null;
+    }
 
     try {
       final response = await http.post(
         Uri.parse(_baseUrl),
-        body: params,
+        body: {'method': 'auth.getToken'},
+      );
+      if (response.statusCode != 200) {
+        lastAuthError = 'Token request failed (HTTP ${response.statusCode})';
+        return null;
+      }
+
+      final token = jsonDecode(response.body)['token'] as String?;
+      if (token == null) {
+        lastAuthError = 'Token request failed: ${response.body}';
+        return null;
+      }
+
+      final authUrl = Uri.https('www.last.fm', '/api/auth/', {
+        'api_key': _apiKey,
+        'token': token,
+      });
+      final launched =
+          await launchUrl(authUrl, mode: LaunchMode.externalApplication);
+      if (!launched) lastAuthError = 'Could not open the browser';
+      return launched ? token : null;
+    } catch (e) {
+      lastAuthError = 'Could not start authorization: $e';
+      print('Last.fm Auth Start Error: $e');
+      return null;
+    }
+  }
+
+  /// Step 2: exchange the authorized [token] for a session key via Worker.
+  /// Returns false if the user has not approved the token yet.
+  Future<bool> completeAuth(String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        body: {'method': 'auth.getSession', 'token': token},
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['session'] != null) {
           _sessionKey = data['session']['key'];
-          _username = data['session']['name']; // Parse name
+          _username = data['session']['name'];
 
           await _storage.write(key: 'lastfm_session_key', value: _sessionKey);
           if (_username != null) {
@@ -58,7 +107,7 @@ class LastFmService extends ChangeNotifier {
       }
       return false;
     } catch (e) {
-      print('Last.fm Login Error: $e');
+      print('Last.fm Auth Complete Error: $e');
       return false;
     }
   }
