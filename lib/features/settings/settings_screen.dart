@@ -282,9 +282,43 @@ class _LastFmTile extends StatefulWidget {
 }
 
 class _LastFmTileState extends State<_LastFmTile> {
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
+  /// Token from a started auth flow; non-null while waiting for the user to
+  /// approve access in the browser.
+  String? _pendingToken;
   bool _isLoading = false;
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _start(LastFmService lastFm) async {
+    setState(() => _isLoading = true);
+    final token = await lastFm.startAuth();
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _pendingToken = token;
+    });
+    if (token == null) {
+      _showMessage(
+          lastFm.lastAuthError ?? 'Could not start Last.fm authorization');
+    }
+  }
+
+  Future<void> _finish(LastFmService lastFm) async {
+    setState(() => _isLoading = true);
+    final success = await lastFm.completeAuth(_pendingToken!);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      if (success) _pendingToken = null;
+    });
+    if (!success) {
+      _showMessage('Not authorized yet. Approve access in your browser, '
+          'then try again.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -308,23 +342,12 @@ class _LastFmTileState extends State<_LastFmTile> {
       subtitle: const Text('Scrobble your music history'),
       childrenPadding: const EdgeInsets.all(20),
       children: [
-        TextField(
-          controller: _usernameController,
-          decoration: const InputDecoration(
-            labelText: 'Username',
-            prefixIcon: Icon(Icons.person),
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _passwordController,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Password',
-            prefixIcon: Icon(Icons.lock),
-            border: OutlineInputBorder(),
-          ),
+        Text(
+          _pendingToken == null
+              ? 'You will sign in on the Last.fm website. BeatBoss never sees '
+                  'your password.'
+              : 'Approve access in your browser, then come back and tap '
+                  '"I\'ve authorized".',
         ),
         const SizedBox(height: 15),
         SizedBox(
@@ -332,26 +355,9 @@ class _LastFmTileState extends State<_LastFmTile> {
           child: ElevatedButton(
             onPressed: _isLoading
                 ? null
-                : () async {
-                    if (_usernameController.text.isEmpty ||
-                        _passwordController.text.isEmpty) {
-                      return;
-                    }
-                    setState(() => _isLoading = true);
-                    final success = await lastFm.login(
-                        _usernameController.text, _passwordController.text);
-                    if (mounted) {
-                      setState(() => _isLoading = false);
-                      if (!success) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('Last.fm Login Failed')));
-                      } else {
-                        _usernameController.clear();
-                        _passwordController.clear();
-                      }
-                    }
-                  },
+                : () => _pendingToken == null
+                    ? _start(lastFm)
+                    : _finish(lastFm),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
               foregroundColor: Colors.black,
@@ -361,10 +367,20 @@ class _LastFmTileState extends State<_LastFmTile> {
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(color: Colors.black))
-                : const Text('Connect',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                : Text(
+                    _pendingToken == null
+                        ? 'Connect with Last.fm'
+                        : "I've authorized",
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
+        if (_pendingToken != null)
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () => setState(() => _pendingToken = null),
+            child: const Text('Cancel'),
+          ),
       ],
     );
   }
