@@ -12,6 +12,7 @@ import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_screen.dart';
 import '../search/search_screen.dart';
 import '../shared/addon_detail_screen.dart';
+import 'desktop_fullscreen_player.dart';
 
 /// Player Bar - bottom player controls matching original exactly
 class PlayerBar extends StatefulWidget {
@@ -134,71 +135,111 @@ class _DesktopPlayerBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _TrackArt(
-                    imageUrl: track.displayImage,
-                    isDownloaded: false,
-                    size: 46),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context, rootNavigator: true).push(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const DesktopFullscreenPlayer(),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          const begin = Offset(0.0, 1.0);
+                          const end = Offset.zero;
+                          const curve = Curves.easeInOutCubic;
+                          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                          return SlideTransition(
+                            position: animation.drive(tween),
+                            child: child,
+                          );
+                        },
+                        transitionDuration: const Duration(milliseconds: 400),
+                      ),
+                    );
+                  },
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Hero(
+                      tag: 'player_bar_art_${track.id}',
+                      child: _TrackArt(
+                          imageUrl: track.displayImage,
+                          isDownloaded: false,
+                          size: 46),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        track.title,
-                        style: TextStyle(
-                            color: textColor, fontWeight: FontWeight.bold),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context, rootNavigator: true).push(
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => const DesktopFullscreenPlayer(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              const begin = Offset(0.0, 1.0);
+                              const end = Offset.zero;
+                              const curve = Curves.easeInOutCubic;
+                              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                              return SlideTransition(
+                                position: animation.drive(tween),
+                                child: child,
+                              );
+                            },
+                            transitionDuration: const Duration(milliseconds: 400),
+                          ),
+                        );
+                      },
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Hero(
+                            tag: 'player_bar_title_${track.id}',
+                            child: Material(
+                              type: MaterialType.transparency,
+                              child: Text(
+                                track.title,
+                                style: TextStyle(
+                                    color: textColor, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          Hero(
+                            tag: 'player_bar_artist_${track.id}',
+                            child: Material(
+                              type: MaterialType.transparency,
+                              child: Text(
+                                track.artist,
+                                style: TextStyle(
+                                  color: secondaryColor,
+                                  fontSize: 12,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          if (track.isHiRes)
+                            Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                track.audioQuality!.displayText,
+                                style: const TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                        ],
                       ),
-                      GestureDetector(
-                        onTap: track.artistId != null
-                            ? () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => AddonDetailScreen(
-                                      id: track.artistId!,
-                                      type: AddonDetailType.artist,
-                                      addonId: track.addonId ?? '',
-                                      initialTitle: track.artist,
-                                    ),
-                                  ),
-                                );
-                              }
-                            : null,
-                        child: Text(
-                          track.artist,
-                          style: TextStyle(
-                            color: secondaryColor,
-                            fontSize: 12,
-                            decoration: track.artistId != null
-                                ? TextDecoration.underline
-                                : null,
-                            decorationColor: secondaryColor.withOpacity(0.3),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (track.isHiRes)
-                        Container(
-                          margin: const EdgeInsets.only(top: 4),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryGreen,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            track.audioQuality!.displayText,
-                            style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
                 ),
                 Consumer<LocalLibraryService>(
@@ -264,11 +305,22 @@ class _DesktopPlayerBar extends StatelessWidget {
                           decoration: const BoxDecoration(
                               color: AppTheme.primaryGreen,
                               shape: BoxShape.circle),
-                          child: Icon(
-                            player.isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.black,
-                            size: 20,
-                          ),
+                          child: player.isBuffering
+                              ? const Center(
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                )
+                              : Icon(
+                                  player.isPlaying ? Icons.pause : Icons.play_arrow,
+                                  color: Colors.black,
+                                  size: 20,
+                                ),
                         ),
                       ),
                       const SizedBox(width: 15),
@@ -315,12 +367,10 @@ class _DesktopPlayerBar extends StatelessWidget {
                                 alignment: Alignment.centerLeft,
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 6.0),
+                                      horizontal: 14.0),
                                   child: LinearProgressIndicator(
                                     value: player.bufferedSliderValue / 1000,
-                                    backgroundColor: isDark
-                                        ? Colors.white10
-                                        : Colors.black12,
+                                    backgroundColor: (isDark ? Colors.white : Colors.black).withOpacity(0.1),
                                     valueColor: AlwaysStoppedAnimation<Color>(
                                       (isDark ? Colors.white : Colors.black)
                                           .withOpacity(0.3),
@@ -607,10 +657,21 @@ class _MobilePlayerBar extends StatelessWidget {
                         decoration: const BoxDecoration(
                             color: AppTheme.primaryGreen,
                             shape: BoxShape.circle),
-                        child: Icon(
-                            player.isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.black,
-                            size: 22))),
+                        child: player.isBuffering
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                player.isPlaying ? Icons.pause : Icons.play_arrow,
+                                color: Colors.black,
+                                size: 22))),
                 IconButton(
                   icon: const Icon(Icons.skip_next),
                   color: textColor,
@@ -776,12 +837,10 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                             24.0), // Slider internal padding default is around 24
                                     child: LinearProgressIndicator(
                                       value: player.bufferedSliderValue / 1000,
-                                      backgroundColor: isDark
-                                          ? Colors.white10
-                                          : Colors.black12,
+                                      backgroundColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
                                       valueColor: AlwaysStoppedAnimation<Color>(
                                         (isDark ? Colors.white : Colors.black)
-                                            .withOpacity(0.3),
+                                            .withValues(alpha: 0.3),
                                       ),
                                       minHeight: 4,
                                     ),
@@ -843,12 +902,23 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                             heroTag: 'play_pause_fab', // Unique tag
                             backgroundColor: AppTheme.primaryGreen,
                             onPressed: player.togglePlayPause,
-                            child: Icon(
-                                player.isPlaying
-                                    ? Icons.pause
-                                    : Icons.play_arrow,
-                                color: Colors.black,
-                                size: 42), // Increased
+                            child: player.isBuffering
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 3,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    player.isPlaying
+                                        ? Icons.pause
+                                        : Icons.play_arrow,
+                                    color: Colors.black,
+                                    size: 42), // Increased
                           ),
                           IconButton(
                             icon: const Icon(Icons.skip_next,
@@ -973,6 +1043,7 @@ class _TrackArt extends StatelessWidget {
                 ? CachedNetworkImage(
                     imageUrl: imageUrl,
                     fit: BoxFit.cover,
+                    memCacheWidth: 600,
                     placeholder: (_, __) => Container(color: AppTheme.darkCard),
                     errorWidget: (_, __, ___) =>
                         const Icon(Icons.music_note, color: Colors.white30),

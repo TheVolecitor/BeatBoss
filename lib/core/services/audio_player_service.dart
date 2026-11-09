@@ -21,6 +21,7 @@ class AudioPlayerService with ChangeNotifier {
   Duration _position = Duration.zero;
   Duration _bufferedPosition = Duration.zero; // Added
   double _volume = 0.8;
+  bool _isBuffering = false;
 
   List<Track> _queue = [];
   int _currentIndex = -1;
@@ -42,6 +43,7 @@ class AudioPlayerService with ChangeNotifier {
   Duration get duration => _duration;
   Duration get position => _position;
   Duration get bufferedPosition => _bufferedPosition; // Added
+  bool get isBuffering => _isBuffering;
   // Note: AudioHandler doesn't expose volume in state usually,
   // but we can manage it somewhat or just assume system volume + local override?
   // We'll trust the stored _volume and re-apply if needed, but JustAudio handles it.
@@ -108,6 +110,8 @@ class AudioPlayerService with ChangeNotifier {
     _handler.playbackState.listen((state) {
       _position = state.position;
       _bufferedPosition = state.bufferedPosition; // Added
+      _isBuffering = state.processingState == AudioProcessingState.buffering || 
+                     state.processingState == AudioProcessingState.loading;
       _updateCurrentLyric(); // Keep lyrics in sync with position
 
       switch (state.repeatMode) {
@@ -164,8 +168,13 @@ class AudioPlayerService with ChangeNotifier {
           _lastFmService.updateNowPlaying(_currentTrack!);
           _updateDiscordPresence(debounced: true);
         }
-        notifyListeners();
+      } else {
+        _currentTrack = null;
+        _duration = Duration.zero;
+        _position = Duration.zero;
+        _bufferedPosition = Duration.zero;
       }
+      notifyListeners();
     });
 
     // Listen to Queue
@@ -290,6 +299,10 @@ class AudioPlayerService with ChangeNotifier {
 
   Future<void> removeFromQueue(int index) async {
     await _handler.removeFromQueue(index);
+  }
+
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {
+    await _handler.reorderQueue(oldIndex, newIndex);
   }
 
   // Previous methods...

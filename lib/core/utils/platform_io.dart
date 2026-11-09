@@ -64,9 +64,13 @@ class PlatformHelper {
   }
 
   /// Get the path for storing history file
-  static String? getHistoryFilePath(String fileName) {
-    // Returns null; the async version below is used
-    return null;
+  static Future<String?> getHistoryFilePath(String fileName) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      return '${dir.path}${Platform.pathSeparator}$fileName';
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Write a string to a file
@@ -102,8 +106,8 @@ class PlatformHelper {
 tls-backend=openssl
 
 # Probing: give lavf time to analyze DASH manifests
-demuxer-lavf-probesize=100000000
-demuxer-lavf-analyzeduration=30
+demuxer-lavf-probesize=5000000
+demuxer-lavf-analyzeduration=5
 
 # Cache: RAM-ONLY. DASH needs cache to stitch segments, but disk caching
 # causes file-lock collisions between consecutive streams on Windows.

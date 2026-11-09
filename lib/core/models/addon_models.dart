@@ -157,6 +157,7 @@ class AddonTrack {
   final String? streamURL; // optional — if present, skip /stream call
   final String? artistId;
   final String addonId; // which addon this track belongs to
+  final String? infoText;
 
   AddonTrack({
     required this.id,
@@ -170,6 +171,7 @@ class AddonTrack {
     this.streamURL,
     this.artistId,
     required this.addonId,
+    this.infoText,
   });
 
   factory AddonTrack.fromJson(Map<String, dynamic> json, {required String addonId}) {
@@ -187,6 +189,7 @@ class AddonTrack {
       streamURL: json['streamURL'] ?? json['url'],
       artistId: json['artistId']?.toString() ?? json['artist_id']?.toString(),
       addonId: addonId,
+      infoText: json['infoText'] ?? json['infotext'],
     );
   }
 
@@ -203,6 +206,7 @@ class AddonTrack {
       artistId: artistId,
       addonId: addonId,
       addonTrackId: id,
+      infoText: infoText,
     );
   }
 }
@@ -217,6 +221,7 @@ class AddonAlbum {
   final String? year;
   final List<AddonTrack>? tracks; // populated from /album/{id}
   final String addonId;
+  final String? infoText;
 
   AddonAlbum({
     required this.id,
@@ -227,6 +232,7 @@ class AddonAlbum {
     this.year,
     this.tracks,
     required this.addonId,
+    this.infoText,
   });
 
   factory AddonAlbum.fromJson(Map<String, dynamic> json, {required String addonId}) {
@@ -243,6 +249,7 @@ class AddonAlbum {
               .toList()
           : null,
       addonId: addonId,
+      infoText: json['infoText'] ?? json['infotext'],
     );
   }
 }
@@ -257,6 +264,7 @@ class AddonArtist {
   final List<AddonTrack>? topTracks;
   final List<AddonAlbum>? albums;
   final String addonId;
+  final String? infoText;
 
   AddonArtist({
     required this.id,
@@ -267,6 +275,7 @@ class AddonArtist {
     this.topTracks,
     this.albums,
     required this.addonId,
+    this.infoText,
   });
 
   factory AddonArtist.fromJson(Map<String, dynamic> json, {required String addonId}) {
@@ -289,6 +298,7 @@ class AddonArtist {
               .toList()
           : null,
       addonId: addonId,
+      infoText: json['infoText'] ?? json['infotext'],
     );
   }
 }
@@ -303,6 +313,7 @@ class AddonPlaylist {
   final int? trackCount;
   final List<AddonTrack>? tracks; // populated from /playlist/{id}
   final String addonId;
+  final String? infoText;
 
   AddonPlaylist({
     required this.id,
@@ -313,6 +324,7 @@ class AddonPlaylist {
     this.trackCount,
     this.tracks,
     required this.addonId,
+    this.infoText,
   });
 
   factory AddonPlaylist.fromJson(Map<String, dynamic> json, {required String addonId}) {
@@ -329,6 +341,7 @@ class AddonPlaylist {
               .toList()
           : null,
       addonId: addonId,
+      infoText: json['infoText'] ?? json['infotext'],
     );
   }
 }

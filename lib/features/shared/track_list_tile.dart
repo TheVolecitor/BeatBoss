@@ -29,9 +29,11 @@ class TrackListTile extends StatelessWidget {
     this.libraryId,
     this.onRemove,
     this.removeLabel = 'Remove from Library',
+    this.showInfoText = false,
   });
 
   final String removeLabel;
+  final bool showInfoText;
 
   @override
   Widget build(BuildContext context) {
@@ -104,13 +106,38 @@ class TrackListTile extends StatelessWidget {
             ],
           ],
         ),
-        subtitle: Text(
-          track.artist,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: isCurrentTrack ? AppTheme.primaryGreen.withOpacity(0.7) : (isDark ? Colors.white54 : Colors.black54),
-          ),
+        subtitle: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                track.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isCurrentTrack ? AppTheme.primaryGreen.withOpacity(0.7) : (isDark ? Colors.white54 : Colors.black54),
+                ),
+              ),
+            ),
+            if (showInfoText && track.infoText != null && track.infoText!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.black12,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  track.infoText!,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white54 : Colors.black54,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -182,6 +209,7 @@ class TrackListTile extends StatelessWidget {
             ? CachedNetworkImage(
                 imageUrl: track.albumCover!,
                 fit: BoxFit.cover,
+                memCacheWidth: 200,
                 errorWidget: (_, __, ___) => const Icon(Icons.music_note),
               )
             : const Icon(Icons.music_note, color: Colors.white54),

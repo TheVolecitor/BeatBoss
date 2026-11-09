@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:media_kit/media_kit.dart'; // MediaKit.ensureInitialized()
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/utils/hive/hive_provider.dart';
@@ -30,6 +31,10 @@ import 'core/utils/platform_helper.dart';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+    
+    // Severely restrict ImageCache to keep RAM low (Max 40MB / 100 images)
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 40 * 1024 * 1024;
+    PaintingBinding.instance.imageCache.maximumSize = 100;
 
     // Initialize media_kit (required before creating any Player)
     if (!kIsWeb) PlatformHelper.ensureMpvConfig();
@@ -66,6 +71,7 @@ void main() async {
     final handlerInstance = AppAudioHandler(
       downloadManager: downloadManager,
       addonService: addonService,
+      settingsService: settingsService,
     );
 
     final audioHandler = kIsWeb
@@ -152,6 +158,14 @@ class BeatBossApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        dragDevices: {
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.touch,
+          PointerDeviceKind.stylus,
+          PointerDeviceKind.unknown,
+        },
+      ),
       home: const AppShell(),
     );
   }

@@ -284,7 +284,7 @@ class _AppShellState extends State<AppShell> {
         Expanded(
           child: Container(
             color: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
-            child: IndexedStack(
+            child: SlideIndexedStack(
               index: _selectedIndex,
               children: _screens,
             ),
@@ -295,7 +295,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _buildMobileLayout(bool isDark) {
-    return IndexedStack(
+    return SlideIndexedStack(
       index: _selectedIndex,
       children: _screens,
     );
@@ -548,6 +548,67 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class SlideIndexedStack extends StatefulWidget {
+  final int index;
+  final List<Widget> children;
+  final Duration duration;
+
+  const SlideIndexedStack({
+    super.key,
+    required this.index,
+    required this.children,
+    this.duration = const Duration(milliseconds: 300),
+  });
+
+  @override
+  State<SlideIndexedStack> createState() => _SlideIndexedStackState();
+}
+
+class _SlideIndexedStackState extends State<SlideIndexedStack>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0.0, 0.1), // Slide up subtly
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(SlideIndexedStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index != oldWidget.index) {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _controller,
+        child: IndexedStack(
+          index: widget.index,
+          children: widget.children,
         ),
       ),
     );

@@ -11,6 +11,7 @@ import '../shared/track_list_tile.dart';
 import '../import/playlist_import_dialog.dart';
 import '../../core/services/history_service.dart';
 import '../shared/addon_detail_screen.dart';
+import '../shared/horizontal_scroll_wrapper.dart';
 
 /// Search Screen - searches active addon and displays unified results
 class SearchScreen extends StatefulWidget {
@@ -77,6 +78,7 @@ class SearchScreenState extends State<SearchScreen> {
       addonId: at.addonId,
       addonTrackId: at.id,
       streamURL: at.streamURL,
+      infoText: at.infoText,
     );
   }
 
@@ -184,7 +186,17 @@ class SearchScreenState extends State<SearchScreen> {
             if (active.icon != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: Image.network(active.icon!, width: 16, height: 16, fit: BoxFit.cover),
+                child: Image.network(
+                  active.icon!, 
+                  width: 16, 
+                  height: 16, 
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.extension, 
+                    size: 16, 
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
             ] else ...[
@@ -219,7 +231,12 @@ class SearchScreenState extends State<SearchScreen> {
             final addon = searchAddons[index];
             return ListTile(
               leading: addon.icon != null
-                  ? Image.network(addon.icon!, width: 24, height: 24)
+                  ? Image.network(
+                      addon.icon!, 
+                      width: 24, 
+                      height: 24,
+                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.extension),
+                    )
                   : const Icon(Icons.extension),
               title: Text(addon.name),
               trailing: addonService.activeAddonId == addon.id
@@ -378,6 +395,7 @@ class SearchScreenState extends State<SearchScreen> {
                   track: topTracks[index],
                   tracks: allMappedTracks, // Pass full list for contiguous playback
                   index: index,
+                  showInfoText: true,
                 );
               },
               childCount: topTracks.length,
@@ -386,23 +404,24 @@ class SearchScreenState extends State<SearchScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 25)),
         ],
 
-        // 2. Artists
         if (_results!.artists.isNotEmpty) ...[
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 15),
-              child: Text('Artists', style: _sectionStyle(isDark)),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 140,
-              child: ListView.builder(
+            child: HorizontalScrollWrapper(
+              title: 'Artists',
+              titleStyle: _sectionStyle(isDark),
+              listHeight: 140,
+              itemWidth: 100, // Artists have 100 width
+              itemSpacing: 15,
+              builder: (context, controller) => ListView.builder(
+                controller: controller,
                 scrollDirection: Axis.horizontal,
                 itemCount: _results!.artists.length,
                 itemBuilder: (context, index) {
                   final artist = _results!.artists[index];
-                  return _ArtistCard(artist: artist, isDark: isDark);
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 15),
+                    child: AddonArtistCard(artist: artist, isDark: isDark),
+                  );
                 },
               ),
             ),
@@ -410,23 +429,24 @@ class SearchScreenState extends State<SearchScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 25)),
         ],
 
-        // 3. Albums
         if (_results!.albums.isNotEmpty) ...[
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 15),
-              child: Text('Albums', style: _sectionStyle(isDark)),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 210,
-              child: ListView.builder(
+            child: HorizontalScrollWrapper(
+              title: 'Albums',
+              titleStyle: _sectionStyle(isDark),
+              listHeight: 210,
+              itemWidth: 140, // Albums have 140 width
+              itemSpacing: 15,
+              builder: (context, controller) => ListView.builder(
+                controller: controller,
                 scrollDirection: Axis.horizontal,
                 itemCount: _results!.albums.length,
                 itemBuilder: (context, index) {
                   final album = _results!.albums[index];
-                  return _AlbumCard(album: album, isDark: isDark);
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 15),
+                    child: AddonAlbumCard(album: album, isDark: isDark),
+                  );
                 },
               ),
             ),
@@ -434,23 +454,24 @@ class SearchScreenState extends State<SearchScreen> {
           const SliverToBoxAdapter(child: SizedBox(height: 25)),
         ],
 
-        // 4. Playlists
         if (_results!.playlists.isNotEmpty) ...[
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 15),
-              child: Text('Playlists', style: _sectionStyle(isDark)),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 210,
-              child: ListView.builder(
+            child: HorizontalScrollWrapper(
+              title: 'Playlists',
+              titleStyle: _sectionStyle(isDark),
+              listHeight: 210,
+              itemWidth: 140, // Playlists have 140 width
+              itemSpacing: 15,
+              builder: (context, controller) => ListView.builder(
+                controller: controller,
                 scrollDirection: Axis.horizontal,
                 itemCount: _results!.playlists.length,
                 itemBuilder: (context, index) {
                   final playlist = _results!.playlists[index];
-                  return _PlaylistCard(playlist: playlist, isDark: isDark);
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 15),
+                    child: AddonPlaylistCard(playlist: playlist, isDark: isDark),
+                  );
                 },
               ),
             ),
@@ -471,8 +492,9 @@ class SearchScreenState extends State<SearchScreen> {
               (context, index) {
                 return TrackListTile(
                   track: moreTracks[index],
-                  tracks: allMappedTracks,
-                  index: index + 3, // Offset by 3 for correct indexing in full list
+                  tracks: allMappedTracks, // Pass full list
+                  index: index + 3, // Offset index for proper queue position
+                  showInfoText: true,
                 );
               },
               childCount: moreTracks.length,
@@ -491,11 +513,11 @@ class SearchScreenState extends State<SearchScreen> {
       );
 }
 
-class _AlbumCard extends StatelessWidget {
+class AddonAlbumCard extends StatelessWidget {
   final AddonAlbum album;
   final bool isDark;
 
-  const _AlbumCard({required this.album, required this.isDark});
+  const AddonAlbumCard({super.key, required this.album, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -528,15 +550,22 @@ class _AlbumCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: album.artworkURL != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: album.artworkURL!,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => const Icon(Icons.album, size: 40),
+                  ? Hero(
+                      tag: album.id,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: album.artworkURL!,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 400,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) =>
+                              const Icon(Icons.error),
+                        ),
                       ),
                     )
-                  : const Icon(Icons.album, size: 40),
+                  : const Icon(Icons.album, size: 60, color: Colors.white24),
             ),
             const SizedBox(height: 8),
             Text(
@@ -545,11 +574,36 @@ class _AlbumCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            Text(
-              album.artist,
-              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 12),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    album.artist,
+                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (album.infoText != null && album.infoText!.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white10 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      album.infoText!,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white54 : Colors.black54,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -558,11 +612,11 @@ class _AlbumCard extends StatelessWidget {
   }
 }
 
-class _ArtistCard extends StatelessWidget {
+class AddonArtistCard extends StatelessWidget {
   final AddonArtist artist;
   final bool isDark;
 
-  const _ArtistCard({required this.artist, required this.isDark});
+  const AddonArtistCard({super.key, required this.artist, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -594,14 +648,22 @@ class _ArtistCard extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: artist.artworkURL != null
-                  ? ClipOval(
-                      child: CachedNetworkImage(
-                        imageUrl: artist.artworkURL!,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => const Icon(Icons.person, size: 40),
+                  ? Hero(
+                      tag: artist.id,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(70),
+                        child: CachedNetworkImage(
+                          imageUrl: artist.artworkURL!,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 400,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) =>
+                              const Icon(Icons.error),
+                        ),
                       ),
                     )
-                  : const Icon(Icons.person, size: 40),
+                  : const Icon(Icons.person, size: 60, color: Colors.white24),
             ),
             const SizedBox(height: 8),
             Text(
@@ -611,6 +673,24 @@ class _ArtistCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+            if (artist.infoText != null && artist.infoText!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.black12,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  artist.infoText!,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white54 : Colors.black54,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -618,11 +698,11 @@ class _ArtistCard extends StatelessWidget {
   }
 }
 
-class _PlaylistCard extends StatelessWidget {
+class AddonPlaylistCard extends StatelessWidget {
   final AddonPlaylist playlist;
   final bool isDark;
 
-  const _PlaylistCard({required this.playlist, required this.isDark});
+  const AddonPlaylistCard({super.key, required this.playlist, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -655,15 +735,22 @@ class _PlaylistCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: playlist.artworkURL != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: playlist.artworkURL!,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => const Icon(Icons.queue_music, size: 40),
+                  ? Hero(
+                      tag: playlist.id,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: playlist.artworkURL!,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 400,
+                          placeholder: (context, url) =>
+                              const Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) =>
+                              const Icon(Icons.error),
+                        ),
                       ),
                     )
-                  : const Icon(Icons.queue_music, size: 40),
+                  : const Icon(Icons.queue_music, size: 60, color: Colors.white24),
             ),
             const SizedBox(height: 8),
             Text(
@@ -672,11 +759,36 @@ class _PlaylistCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            Text(
-              playlist.creator ?? 'Playlist',
-              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 12),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    playlist.creator ?? 'Playlist',
+                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (playlist.infoText != null && playlist.infoText!.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white10 : Colors.black12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      playlist.infoText!,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white54 : Colors.black54,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

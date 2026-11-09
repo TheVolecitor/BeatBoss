@@ -104,6 +104,7 @@ The response should contain arrays for the requested types.
 - `artworkURL`: (Optional) URL to cover art. (Aliases: `image`, `cover`, `albumCover`).
 - `streamURL`: (Optional) Direct playable URL. If provided, the app skips the `/stream/:id` call.
 - `format`: (Optional) `mp3`, `flac`, `aac`, etc.
+- `infoText`: (Optional) A short string displayed as a small pill badge next to the item in search results (e.g., "FLAC", "Explicit"). *Note: This field is also supported on `albums`, `artists`, and `playlists` objects.*
 
 ---
 
@@ -127,8 +128,9 @@ If a track does not provide a `streamURL` in the search results, the app will ca
 
 ## 4. Catalog API
 
-Provides detailed metadata for specific entities.
+Provides detailed metadata for specific entities, as well as general catalog browsing.
 
+- `GET /catalog` (Returns a generic browse/home page. The response format is identical to the `/search` endpoint, providing curated tracks, albums, artists, or playlists).
 - `GET /album/:id`
 - `GET /artist/:id`
 - `GET /playlist/:id`

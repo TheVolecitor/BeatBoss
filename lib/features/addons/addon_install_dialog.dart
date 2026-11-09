@@ -172,7 +172,11 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                 child: manifest.icon != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(manifest.icon!, fit: BoxFit.cover),
+                        child: Image.network(
+                          manifest.icon!, 
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.extension),
+                        ),
                       )
                     : const Icon(Icons.extension),
               ),

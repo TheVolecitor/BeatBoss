@@ -13,8 +13,11 @@ import '../../core/services/history_service.dart';
 import '../../core/services/last_fm_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/utils/app_toast.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+
 import '../import/playlist_import_dialog.dart';
 import '../search/search_screen.dart';
+import '../shared/horizontal_scroll_wrapper.dart';
 
 /// Home Screen - displays play history and welcome message
 class HomeScreen extends StatefulWidget {
@@ -30,18 +33,28 @@ class _HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
   // Recommendations
   List<Track> _recommendations = [];
+  List<AddonAlbum> _recommendedAlbums = [];
+  List<AddonPlaylist> _recommendedPlaylists = [];
   bool _loadingRecommendations = false;
   bool _hasInitialFetch = false;
+  late LastFmService _lastFmService;
 
   @override
   bool get wantKeepAlive => true;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _lastFmService = context.read<LastFmService>();
+  }
+
+  @override
   void initState() {
     super.initState();
     // Listen for auth changes to trigger fetch
-    final lastFm = context.read<LastFmService>();
-    lastFm.addListener(_onAuthChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _lastFmService.addListener(_onAuthChanged);
+    });
 
     // Initial fetch check
     if (!_hasInitialFetch) {
@@ -53,15 +66,18 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-    context.read<LastFmService>().removeListener(_onAuthChanged);
+    _lastFmService.removeListener(_onAuthChanged);
     super.dispose();
   }
 
   void _onAuthChanged() {
     if (!mounted) return;
     final lastFm = context.read<LastFmService>();
-    // If authenticated and no recs, fetch them
-    if (lastFm.isAuthenticated &&
+    final settings = context.read<SettingsService>();
+    
+    // Only fetch Last.fm if setting is enabled
+    if (settings.useLastFmRecommendations &&
+        lastFm.isAuthenticated &&
         _recommendations.isEmpty &&
         !_loadingRecommendations) {
       _fetchRecommendations();
@@ -70,50 +86,56 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _fetchRecommendations() async {
     if (!mounted) return;
-
-    final lastFm = context.read<LastFmService>();
-    final addonService = context.read<AddonService>();
-
-    if (!lastFm.isAuthenticated) {
-      if (mounted) setState(() => _recommendations = []);
-      return;
-    }
-
     if (mounted) setState(() => _loadingRecommendations = true);
 
     try {
-      final rawRecs = await lastFm.getRecommendations();
+      final addonService = context.read<AddonService>();
+      final catalog = await addonService.getCatalog();
+      
       if (!mounted) return;
 
-      // Parallelize searches using active addon
-      final searchFutures = rawRecs.take(10).map((rec) async {
-        final query = "${rec['name']} ${rec['artist']}";
-        try {
-          // Use captured addonService to avoid context lookup after await
-          final results = await addonService.search(query, limit: 1);
-          if (results != null && results.tracks.isNotEmpty) {
-            return _mapTrack(results.tracks.first);
-          }
-        } catch (e) {
-          print('Search error for $query: $e');
+      List<Track> resolvedTracks = [];
+
+      // If we got catalog tracks, use them
+      if (catalog != null && catalog.tracks.isNotEmpty) {
+        resolvedTracks = catalog.tracks.map((t) => _mapTrack(t)).toList();
+      } 
+      // Fallback to Last.fm if enabled in settings
+      else if (context.read<SettingsService>().useLastFmRecommendations) {
+        final lastFm = context.read<LastFmService>();
+        if (lastFm.isAuthenticated) {
+          final rawRecs = await lastFm.getRecommendations();
+          if (!mounted) return;
+
+          final searchFutures = rawRecs.take(10).map((rec) async {
+            final query = "${rec['name']} ${rec['artist']}";
+            try {
+              final results = await addonService.search(query, limit: 1);
+              if (results != null && results.tracks.isNotEmpty) {
+                return _mapTrack(results.tracks.first);
+              }
+            } catch (e) {
+              print('Search error for $query: $e');
+            }
+            return null;
+          });
+
+          final results = await Future.wait(searchFutures);
+          resolvedTracks = results.whereType<Track>().toList();
         }
-        return null;
-      });
-
-      final results = await Future.wait(searchFutures);
-      if (!mounted) return;
-
-      final resolvedTracks = results.whereType<Track>().toList();
+      }
 
       if (mounted) {
         setState(() {
           _recommendations = resolvedTracks;
+          _recommendedAlbums = catalog?.albums ?? [];
+          _recommendedPlaylists = catalog?.playlists ?? [];
           _loadingRecommendations = false;
           _hasInitialFetch = true;
         });
       }
     } catch (e) {
-      print('Error fetching recommendations: $e');
+      print('Error fetching catalog/recommendations: $e');
       if (mounted) setState(() => _loadingRecommendations = false);
     }
   }
@@ -143,14 +165,22 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildHomeContent(bool isDark, SettingsService settings) {
     final history = context.watch<HistoryService>();
-    final playHistory = history.recentlyPlayed;
+    // User requested top 5
+    final playHistory = history.recentlyPlayed.take(5).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 5, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 10),
+      child: AnimationLimiter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: AnimationConfiguration.toStaggeredList(
+            duration: const Duration(milliseconds: 375),
+            childAnimationBuilder: (widget) => SlideAnimation(
+              verticalOffset: 50.0,
+              child: widget,
+            ),
+            children: <Widget>[
+              const SizedBox(height: 10),
           // Greeting
           Text(
             'Discover Music',
@@ -175,25 +205,28 @@ class _HomeScreenState extends State<HomeScreen>
 
           // Play history section
           if (playHistory.isNotEmpty) ...[
-            Text(
-              'Recently Played',
-              style: TextStyle(
+            HorizontalScrollWrapper(
+              title: 'Recently Played',
+              titleStyle: TextStyle(
                 color: isDark ? Colors.white : Colors.black,
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
               ),
-            ),
-            const SizedBox(height: 15),
-            SizedBox(
-              height: 220,
-              child: ListView.builder(
+              listHeight: 220,
+              itemWidth: 140,
+              itemSpacing: 15,
+              builder: (context, controller) => ListView.builder(
+                controller: controller,
                 scrollDirection: Axis.horizontal,
                 itemCount: playHistory.length,
                 itemBuilder: (context, index) {
-                  return _RecentTrackCard(
-                    track: playHistory[index],
-                    isDark: isDark,
-                    width: 140,
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 15),
+                    child: _RecentTrackCard(
+                      track: playHistory[index],
+                      isDark: isDark,
+                      width: 140,
+                    ),
                   );
                 },
               ),
@@ -201,33 +234,8 @@ class _HomeScreenState extends State<HomeScreen>
             const SizedBox(height: 30),
           ],
 
-          // Last.FM Connect Prompt
-          if (!context.watch<LastFmService>().isAuthenticated) ...[
-            _buildLastFmConnectCard(context, isDark),
-            const SizedBox(height: 30),
-          ],
-
           // Recommendations Section
-          if (context.watch<LastFmService>().isAuthenticated) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Recommended for You',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh Recommendations',
-                  onPressed:
-                      _loadingRecommendations ? null : _fetchRecommendations,
-                ),
-              ],
-            ),
-            const SizedBox(height: 15),
+          if (true) ...[
             if (_loadingRecommendations)
               const SizedBox(
                 height: 220,
@@ -236,31 +244,94 @@ class _HomeScreenState extends State<HomeScreen>
                       CircularProgressIndicator(color: AppTheme.primaryGreen),
                 ),
               )
-            else if (_recommendations.isEmpty)
+            else if (_recommendations.isEmpty && _recommendedAlbums.isEmpty && _recommendedPlaylists.isEmpty)
               const SizedBox(
                 height: 100,
                 child: Center(
                   child: Text('No recommendations found yet.'),
                 ),
               )
-            else
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 150,
-                  childAspectRatio: 0.65,
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
+            else ...[
+              if (_recommendations.isNotEmpty) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Tracks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Refresh Recommendations',
+                      onPressed: _loadingRecommendations ? null : _fetchRecommendations,
+                    ),
+                  ],
                 ),
-                itemCount: _recommendations.length,
-                itemBuilder: (context, index) {
-                  return _RecentTrackCard(
-                    track: _recommendations[index],
-                    isDark: isDark,
-                  );
-                },
-              ),
+                const SizedBox(height: 15),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 150,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: 15,
+                    mainAxisSpacing: 15,
+                  ),
+                  itemCount: _recommendations.length,
+                  itemBuilder: (context, index) {
+                    return _RecentTrackCard(
+                      track: _recommendations[index],
+                      isDark: isDark,
+                    );
+                  },
+                ),
+                const SizedBox(height: 30),
+              ],
+              if (_recommendedAlbums.isNotEmpty) ...[
+                HorizontalScrollWrapper(
+                  title: 'Albums',
+                  titleStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  trailing: _recommendations.isEmpty ? IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh Recommendations',
+                    onPressed: _loadingRecommendations ? null : _fetchRecommendations,
+                  ) : null,
+                  listHeight: 210,
+                  itemWidth: 140,
+                  itemSpacing: 15,
+                  builder: (context, controller) => ListView.builder(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _recommendedAlbums.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 15),
+                        child: AddonAlbumCard(album: _recommendedAlbums[index], isDark: isDark),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ],
+              if (_recommendedPlaylists.isNotEmpty) ...[
+                HorizontalScrollWrapper(
+                  title: 'Playlists',
+                  titleStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  listHeight: 210,
+                  itemWidth: 140,
+                  itemSpacing: 15,
+                  builder: (context, controller) => ListView.builder(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _recommendedPlaylists.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 15),
+                        child: AddonPlaylistCard(playlist: _recommendedPlaylists[index], isDark: isDark),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ],
+            ],
             const SizedBox(height: 30),
           ],
 
@@ -321,7 +392,9 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -521,6 +594,7 @@ class _RecentTrackCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         width: double.infinity,
                         height: double.infinity,
+                        memCacheWidth: 400,
                         placeholder: (_, __) =>
                             Container(color: AppTheme.darkCard),
                         errorWidget: (_, __, ___) => Container(
@@ -642,14 +716,21 @@ class _RecentTrackCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            Text(
-              track.artist,
-              style: TextStyle(
-                color: isDark ? Colors.white54 : Colors.black45,
-                fontSize: 12,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    track.artist,
+                    style: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black45,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -213,7 +213,7 @@ class _LyricsListState extends State<LyricsList> {
 
     // Header height approx 80-100.
     const double headerHeight = 100.0;
-    const double approxLineHeight = 50.0;
+    const double approxLineHeight = 60.0;
 
     double offset = headerHeight + (index * approxLineHeight);
 

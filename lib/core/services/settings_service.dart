@@ -29,6 +29,13 @@ class SettingsService extends ChangeNotifier {
   static const String _keyActiveAddonId = 'active_addon_id';
   static const String _keyRemovedBuiltins = 'removed_builtins';
 
+  // New settings
+  static const String _keyUseLastFmRecommendations = 'use_lastfm_recs';
+  static const String _keyEnablePrefetch = 'enable_prefetch';
+  static const String _keyPrefetchDuration = 'prefetch_duration';
+  static const String _keyCrossfadeDuration = 'crossfade_duration';
+  static const String _keyFullscreenLeftPaneProportion = 'fullscreen_left_pane_proportion';
+
   Future<void> init() async {
     _box = await Hive.openBox(_boxName);
     _initialized = true;
@@ -47,6 +54,14 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> toggleTheme() async {
     await setTheme(isDarkMode ? 'light' : 'dark');
+  }
+
+  // ========== UI Settings ==========
+  double get fullscreenLeftPaneProportion => _box.get(_keyFullscreenLeftPaneProportion, defaultValue: 0.5);
+
+  Future<void> setFullscreenLeftPaneProportion(double value) async {
+    await _box.put(_keyFullscreenLeftPaneProportion, value.clamp(0.2, 0.8));
+    notifyListeners();
   }
 
   // ========== Download Location ==========
@@ -298,5 +313,31 @@ class SettingsService extends ChangeNotifier {
       await _box.put(_keyRemovedBuiltins, removed);
       notifyListeners();
     }
+  }
+
+  // ========== New Playback & Last.fm Settings ==========
+
+  bool get useLastFmRecommendations => _box.get(_keyUseLastFmRecommendations, defaultValue: false);
+  Future<void> setUseLastFmRecommendations(bool value) async {
+    await _box.put(_keyUseLastFmRecommendations, value);
+    notifyListeners();
+  }
+
+  bool get enablePrefetch => _box.get(_keyEnablePrefetch, defaultValue: true);
+  Future<void> setEnablePrefetch(bool value) async {
+    await _box.put(_keyEnablePrefetch, value);
+    notifyListeners();
+  }
+
+  int get prefetchDuration => _box.get(_keyPrefetchDuration, defaultValue: 30);
+  Future<void> setPrefetchDuration(int seconds) async {
+    await _box.put(_keyPrefetchDuration, seconds);
+    notifyListeners();
+  }
+
+  int get crossfadeDuration => _box.get(_keyCrossfadeDuration, defaultValue: 0);
+  Future<void> setCrossfadeDuration(int seconds) async {
+    await _box.put(_keyCrossfadeDuration, seconds);
+    notifyListeners();
   }
 }

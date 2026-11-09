@@ -94,6 +94,7 @@ class QueueScreen extends StatelessWidget {
                               child: CachedNetworkImage(
                                 imageUrl: track.displayImage,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 200,
                                 placeholder: (_, __) =>
                                     Container(color: AppTheme.darkCard),
                                 errorWidget: (_, __, ___) => Container(

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/models/addon_models.dart';
 import '../../core/services/addon_service.dart';
 import '../../core/theme/app_theme.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'addon_install_dialog.dart';
 
@@ -26,55 +27,52 @@ class AddonsScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          if (!addonService.installedAddons.any((a) => a.id == 'io.thevolecitor.beatboss-sync'))
-            _buildSyncSetupWidget(context, isDark),
-          Expanded(
-            child: addonService.installedAddons.isEmpty
-                ? _buildEmptyState(context, isDark)
-                : _buildAddonsList(context, addonService, isDark),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            children: [
+              if (!addonService.installedAddons.any((a) => a.id == 'io.thevolecitor.beatboss-sync'))
+                _buildSyncSetupWidget(context, isDark),
+              Expanded(
+                child: addonService.installedAddons.isEmpty
+                    ? _buildEmptyState(context, isDark)
+                    : _buildAddonsList(context, addonService, isDark),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildSyncSetupWidget(BuildContext context, bool isDark) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryGreen, width: 1.5),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.cloud_sync, color: AppTheme.primaryGreen, size: 36),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('BeatBoss Sync', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 4),
-                Text('Sync favourites across devices.', style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87)),
-              ],
-            ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
           ),
-          ElevatedButton(
-            onPressed: () {
-              launchUrl(Uri.parse('https://beatboss-sync-addon.thevolecitor.qzz.io'));
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            ),
-            child: const Text('Setup', style: TextStyle(fontWeight: FontWeight.bold)),
-          )
-        ],
+        ),
+        tileColor: isDark ? AppTheme.darkCard : AppTheme.lightCard,
+        leading: const Icon(Icons.cloud_sync, color: AppTheme.primaryGreen, size: 32),
+        title: const Text('BeatBoss Sync', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('Sync favourites across devices.'),
+        trailing: ElevatedButton(
+          onPressed: () {
+            launchUrl(Uri.parse('https://beatboss-sync-addon.thevolecitor.qzz.io'));
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryGreen,
+            foregroundColor: Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            elevation: 0,
+          ),
+          child: const Text('Setup', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
       ),
     );
   }
@@ -108,21 +106,42 @@ class AddonsScreen extends StatelessWidget {
 
   Widget _buildAddonsList(
       BuildContext context, AddonService addonService, bool isDark) {
-    return ListView.builder(
+    return ReorderableListView.builder(
       padding: const EdgeInsets.all(16),
+      buildDefaultDragHandles: false,
       itemCount: addonService.installedAddons.length,
+      onReorder: (oldIndex, newIndex) {
+        if (oldIndex < newIndex) {
+          newIndex -= 1;
+        }
+        addonService.reorderAddons(oldIndex, newIndex);
+      },
       itemBuilder: (context, index) {
         final addon = addonService.installedAddons[index];
         final isActive = addonService.activeAddonId == addon.id;
         
         return Padding(
+          key: ValueKey(addon.id),
           padding: const EdgeInsets.only(bottom: 16),
-          child: _AddonCard(
-            addon: addon,
-            isActive: isActive,
-            isDark: isDark,
-            onSetActive: () => addonService.setActiveAddon(addon.id),
-            onUninstall: () => _confirmUninstall(context, addonService, addon),
+          child: Row(
+            children: [
+              ReorderableDragStartListener(
+                index: index,
+                child: const Padding(
+                  padding: EdgeInsets.only(right: 8.0, left: 4.0),
+                  child: Icon(Icons.drag_handle, color: Colors.grey),
+                ),
+              ),
+              Expanded(
+                child: _AddonCard(
+                  addon: addon,
+                  isActive: isActive,
+                  isDark: isDark,
+                  onSetActive: () => addonService.setActiveAddon(addon.id),
+                  onUninstall: () => _confirmUninstall(context, addonService, addon),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -196,33 +215,10 @@ class _AddonCard extends StatelessWidget {
           width: isActive ? 2 : 1,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          if (isActive)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              decoration: const BoxDecoration(
-                color: AppTheme.primaryGreen,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(14),
-                  topRight: Radius.circular(14),
-                ),
-              ),
-              child: const Center(
-                child: Text(
-                  'ACTIVE SEARCH PROVIDER',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-            ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -230,18 +226,22 @@ class _AddonCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 56,
-                      height: 56,
+                      width: 64,
+                      height: 64,
                       decoration: BoxDecoration(
                         color: isDark ? Colors.white10 : Colors.black12,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: addon.icon != null
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(addon.icon!, fit: BoxFit.cover),
+                              borderRadius: BorderRadius.circular(14),
+                              child: CachedNetworkImage(
+                                imageUrl: addon.icon!, 
+                                fit: BoxFit.cover,
+                                memCacheWidth: 200,
+                              ),
                             )
-                          : const Icon(Icons.extension, size: 28),
+                          : const Icon(Icons.extension, size: 32),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -307,7 +307,7 @@ class _AddonCard extends StatelessWidget {
                   ],
                 ),
                 if (addon.description != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Text(
                     addon.description!,
                     style: TextStyle(
@@ -323,7 +323,7 @@ class _AddonCard extends StatelessWidget {
                   children: addon.resources.map((res) {
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: isDark ? Colors.white10 : Colors.black12,
                         borderRadius: BorderRadius.circular(16),
@@ -331,7 +331,7 @@ class _AddonCard extends StatelessWidget {
                       child: Text(
                         res.toUpperCase(),
                         style: const TextStyle(
-                            fontSize: 10, fontWeight: FontWeight.w600),
+                            fontSize: 10, fontWeight: FontWeight.bold),
                       ),
                     );
                   }).toList(),
@@ -370,6 +370,27 @@ class _AddonCard extends StatelessWidget {
               ],
             ),
           ),
+          if (isActive)
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGreen,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'ACTIVE',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

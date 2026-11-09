@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
@@ -31,141 +33,259 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final downloadManager = context.watch<DownloadManagerService>();
     final isDark = settings.isDarkMode;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Text(
-              'Settings',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: AnimationLimiter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: AnimationConfiguration.toStaggeredList(
+                duration: const Duration(milliseconds: 375),
+                childAnimationBuilder: (widget) => SlideAnimation(
+                  verticalOffset: 50.0,
+                  child: widget,
+                ),
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Text(
+                      'Settings',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black,
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  // Addons Section
+                  _SettingsSection(
+                    title: 'Addons',
+                    isDark: isDark,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.extension_outlined),
+                        title: const Text('Manage Addons'),
+                        subtitle:
+                            const Text('Install and configure extensions'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const Scaffold(
+                                      body: SafeArea(child: AddonsScreen()))));
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Appearance Section
+                  _SettingsSection(
+                    title: 'Appearance',
+                    isDark: isDark,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.dark_mode_outlined),
+                        title: const Text('Dark Mode'),
+                        trailing: Switch(
+                          value: isDark,
+                          onChanged: (val) => settings.toggleTheme(),
+                          activeThumbColor: AppTheme.primaryGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Downloads Section
+                  _SettingsSection(
+                    title: 'Downloads & Storage',
+                    isDark: isDark,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.folder_open),
+                        title: const Text('Download Location'),
+                        subtitle: FutureBuilder<String>(
+                          future: settings.getDownloadLocation(),
+                          builder: (context, snapshot) =>
+                              Text(snapshot.data ?? 'Loading...'),
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.download_done),
+                        title: const Text('Downloaded Tracks'),
+                        subtitle: Text('${settings.downloadedCount} tracks'),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.storage),
+                        title: const Text('Storage Used'),
+                        subtitle: FutureBuilder<int>(
+                          future: settings.getStorageSize(),
+                          builder: (context, snapshot) =>
+                              Text(_formatBytes(snapshot.data ?? 0)),
+                        ),
+                      ),
+                      if (downloadManager.hasActiveDownloads)
+                        ListTile(
+                          leading: const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2)),
+                          title: Text(
+                              '${downloadManager.activeDownloads.length} Active Downloads'),
+                        ),
+                      ListTile(
+                        leading:
+                            const Icon(Icons.delete_outline, color: Colors.red),
+                        title: const Text('Clear Downloads',
+                            style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600)),
+                        onTap: _clearCache,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Integrations (Last.fm)
+                  _SettingsSection(
+                    title: 'Integrations',
+                    isDark: isDark,
+                    children: [
+                      _LastFmTile(isDark: isDark),
+                      ListTile(
+                        leading: const Icon(Icons.recommend_outlined),
+                        title: const Text('Last.fm Recommendations'),
+                        subtitle:
+                            const Text('Use Last.fm for home screen tracks'),
+                        trailing: Switch(
+                          value: settings.useLastFmRecommendations,
+                          onChanged: (val) =>
+                              settings.setUseLastFmRecommendations(val),
+                          activeThumbColor: AppTheme.primaryGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Playback Section
+                  _SettingsSection(
+                    title: 'Playback',
+                    isDark: isDark,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.bolt),
+                        title: const Text('Instant Track Switching (Prefetch)'),
+                        subtitle:
+                            const Text('Load next track before current ends'),
+                        trailing: Switch(
+                          value: settings.enablePrefetch,
+                          onChanged: (val) => settings.setEnablePrefetch(val),
+                          activeThumbColor: AppTheme.primaryGreen,
+                        ),
+                      ),
+                      if (settings.enablePrefetch)
+                        ListTile(
+                          leading: const SizedBox(width: 24),
+                          title: const Text('Prefetch Duration'),
+                          subtitle:
+                              Text('${settings.prefetchDuration} seconds'),
+                          trailing: _buildStepper(
+                            currentValue: settings.prefetchDuration,
+                            step: 5,
+                            minValue: 0,
+                            isDark: isDark,
+                            onChanged: (val) =>
+                                settings.setPrefetchDuration(val),
+                          ),
+                        ),
+                      ListTile(
+                        leading: const Icon(Icons.swap_horiz),
+                        title: const Text('Crossfade Duration'),
+                        subtitle: Text(settings.crossfadeDuration > 0
+                            ? '${settings.crossfadeDuration} seconds'
+                            : 'Off'),
+                        trailing: _buildStepper(
+                          currentValue: settings.crossfadeDuration,
+                          step: 1,
+                          minValue: 0,
+                          isDark: isDark,
+                          onChanged: (val) =>
+                              settings.setCrossfadeDuration(val),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // About
+                  _SettingsSection(
+                    title: 'About',
+                    isDark: isDark,
+                    children: const [
+                      ListTile(
+                        leading: Icon(Icons.info_outline),
+                        title: Text('Version'),
+                        subtitle: Text('2.0.0 (Flutter)'),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
           ),
-
-          // Addons Section
-          _SettingsSection(
-            title: 'Addons',
-            isDark: isDark,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.extension_outlined),
-                title: const Text('Manage Addons'),
-                subtitle: const Text('Install and configure extensions'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const Scaffold(
-                              body: SafeArea(child: AddonsScreen()))));
-                },
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // Appearance Section
-          _SettingsSection(
-            title: 'Appearance',
-            isDark: isDark,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.dark_mode_outlined),
-                title: const Text('Dark Mode'),
-                trailing: Switch(
-                  value: isDark,
-                  onChanged: (val) => settings.toggleTheme(),
-                  activeThumbColor: AppTheme.primaryGreen,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // Downloads Section
-          _SettingsSection(
-            title: 'Downloads & Storage',
-            isDark: isDark,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.folder_open),
-                title: const Text('Download Location'),
-                subtitle: FutureBuilder<String>(
-                  future: settings.getDownloadLocation(),
-                  builder: (context, snapshot) =>
-                      Text(snapshot.data ?? 'Loading...'),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.download_done),
-                title: const Text('Downloaded Tracks'),
-                subtitle: Text('${settings.downloadedCount} tracks'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.storage),
-                title: const Text('Storage Used'),
-                subtitle: FutureBuilder<int>(
-                  future: settings.getStorageSize(),
-                  builder: (context, snapshot) =>
-                      Text(_formatBytes(snapshot.data ?? 0)),
-                ),
-              ),
-              if (downloadManager.hasActiveDownloads)
-                ListTile(
-                  leading: const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                  title: Text(
-                      '${downloadManager.activeDownloads.length} Active Downloads'),
-                ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Clear Downloads',
-                    style: TextStyle(
-                        color: Colors.red, fontWeight: FontWeight.w600)),
-                onTap: _clearCache,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // Integrations (Last.fm)
-          _SettingsSection(
-            title: 'Integrations',
-            isDark: isDark,
-            children: [
-              _LastFmTile(isDark: isDark),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // About
-          _SettingsSection(
-            title: 'About',
-            isDark: isDark,
-            children: const [
-              ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('Version'),
-                subtitle: Text('1.9.0 (Flutter)'),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 40),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildStepper({
+    required int currentValue,
+    required int step,
+    required int minValue,
+    required bool isDark,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.remove),
+          color: isDark ? Colors.white70 : Colors.black87,
+          onPressed: currentValue <= minValue
+              ? null
+              : () => onChanged(currentValue - step),
+        ),
+        SizedBox(
+          width: 35,
+          child: Text(
+            '$currentValue',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: isDark ? Colors.white : Colors.black,
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add),
+          color: isDark ? Colors.white70 : Colors.black87,
+          onPressed: () => onChanged(currentValue + step),
+        ),
+      ],
     );
   }
 
@@ -243,13 +363,12 @@ class _SettingsSection extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withOpacity(0.05)
+                  : Colors.black.withOpacity(0.05),
+              width: 1,
+            ),
           ),
           child: Column(
             children: [

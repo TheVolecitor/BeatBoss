@@ -2,12 +2,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'; // kIsWeb
 import '../utils/platform_helper.dart';
 
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../models/models.dart';
+import '../models/addon_models.dart';
 import 'download_manager_service.dart';
 import 'addon_service.dart';
+import 'settings_service.dart';
 import 'dash_service.dart';
 import 'dash_native_parser.dart';
 import 'dash_local_proxy_server.dart';
@@ -17,9 +20,17 @@ import 'native_player_config.dart';
 /// It exposes the standard AudioService interface to the UI (and system).
 /// Uses just_audio Player directly.
 class AppAudioHandler extends BaseAudioHandler with SeekHandler {
-  late final AudioPlayer _player;
+  AudioPlayer? _playerInstance;
+  AudioPlayer get _player {
+    if (_playerInstance == null) {
+      _playerInstance = AudioPlayer();
+      _setupPlayerListeners();
+    }
+    return _playerInstance!;
+  }
   final DownloadManagerService _downloadManager;
   final AddonService _addonService;
+  final SettingsService _settingsService;
 
   // Internal Queue State
   List<Track> _internalQueue = [];
@@ -28,36 +39,38 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Timer? _positionTimer;
   int _lastRequestId = 0;
   bool _isSwitchingTrack = false;
+  
+  // Prefetch Cache
+  final Map<String, AddonStreamResult> _prefetchCache = {};
+  bool _isPrefetching = false;
 
   final List<StreamSubscription> _subscriptions = [];
 
   AppAudioHandler({
     required DownloadManagerService downloadManager,
     required AddonService addonService,
+    required SettingsService settingsService,
   })  : _downloadManager = downloadManager,
-        _addonService = addonService {
+        _addonService = addonService,
+        _settingsService = settingsService {
     _init();
   }
 
   // Expose explicit state for UI polling
   Duration get currentPosition {
     if (_isDashActive) return playbackState.value.position;
-    return _player.position;
+    return _playerInstance?.position ?? Duration.zero;
   }
 
   bool get isPlayerPlaying {
     if (_isDashActive) return playbackState.value.playing;
-    return _player.playing;
+    return _playerInstance?.playing ?? false;
   }
 
   Future<void> _init() async {
-    _player = AudioPlayer();
-    
     if (!kIsWeb) {
       _downloadManager.cleanupTemporaryFiles();
     }
-
-    _setupPlayerListeners();
   }
 
   void _setupPlayerListeners() {
@@ -67,25 +80,39 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     }
     _subscriptions.clear();
 
+    DateTime lastPositionBroadcast = DateTime.now();
+    DateTime lastBufferedBroadcast = DateTime.now();
+
     // Subscribe to media_kit streams and push PlaybackState to audio_service
     _subscriptions.addAll([
-      _player.playingStream.listen((_) => _broadcastState()),
-      _player.positionStream.listen((_) => _broadcastState()),
-      _player.bufferedPositionStream.listen((_) => _broadcastState()),
-      _player.playerStateStream.listen((state) {
-        _broadcastState();
+      _playerInstance!.playingStream.listen((_) => _broadcastState()),
+      _playerInstance!.positionStream.listen((pos) {
+        if (DateTime.now().difference(lastPositionBroadcast).inMilliseconds > 500) {
+          _broadcastState();
+          lastPositionBroadcast = DateTime.now();
+        }
+        _checkPrefetch(pos);
+      }),
+      _playerInstance!.bufferedPositionStream.listen((_) {
+        if (DateTime.now().difference(lastBufferedBroadcast).inMilliseconds > 500) {
+          _broadcastState();
+          lastBufferedBroadcast = DateTime.now();
+        }
+      }),
+      _playerInstance!.playerStateStream.listen((state) {
         if (state.processingState == ProcessingState.ready) {
           _isSwitchingTrack = false;
         }
+        _broadcastState();
         if (state.processingState == ProcessingState.completed) {
           _handleTrackCompletion();
         }
       }),
-      _player.durationStream.listen((_) => _broadcastState()),
+      _playerInstance!.durationStream.listen((_) => _broadcastState()),
     ]);
 
     if (kIsWeb) {
-      _subscriptions.add(_player.playingStream.listen((playing) {
+      _subscriptions.add(_playerInstance!.playingStream.listen((playing) {
         if (playing) _startPositionPolling();
         else _stopPositionPolling();
       }));
@@ -93,18 +120,52 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Broadcasts current player state to audio_service (SMTC / Bluetooth / UI)
+  void _checkPrefetch(Duration position) async {
+    if (!_settingsService.enablePrefetch) return;
+    if (_player.duration == null || _player.duration!.inSeconds == 0) return;
+    if (_internalQueue.isEmpty || _currentIndex < 0 || _currentIndex >= _internalQueue.length - 1) return;
+    if (_isPrefetching) return;
+
+    final timeLeft = _player.duration! - position;
+    if (timeLeft.inSeconds <= _settingsService.prefetchDuration) {
+      final nextTrack = _internalQueue[_currentIndex + 1];
+      if (_prefetchCache.containsKey(nextTrack.id)) return;
+      if (_downloadManager.isDownloaded(nextTrack.id)) return; // No need to prefetch local
+
+      _isPrefetching = true;
+      try {
+        print('[AudioHandler] Prefetching next track: ${nextTrack.title}');
+        final streamResult = await _addonService.getStreamResult(
+            nextTrack.addonTrackId ?? nextTrack.id, addonId: nextTrack.addonId);
+        if (streamResult != null && streamResult.url.isNotEmpty) {
+          _prefetchCache[nextTrack.id] = streamResult;
+          print('[AudioHandler] Prefetch complete for: ${nextTrack.title}');
+        }
+      } catch (e) {
+        print('[AudioHandler] Prefetch failed: $e');
+      } finally {
+        _isPrefetching = false;
+      }
+    }
+  }
+
   void _broadcastState() {
-    final isPlaying = _player.playing;
-    final position = _player.position;
-    final buffered = _player.bufferedPosition;
-    final isBuffering = _player.playerState.processingState == ProcessingState.buffering;
-    final isCompleted = _player.playerState.processingState == ProcessingState.completed;
+    final isPlaying = _playerInstance?.playing ?? false;
+    final position = _playerInstance?.position ?? Duration.zero;
+    final buffered = _playerInstance?.bufferedPosition ?? Duration.zero;
+    final isBuffering = _playerInstance?.playerState.processingState == ProcessingState.buffering;
+    final isLoading = _playerInstance?.playerState.processingState == ProcessingState.loading;
+    final isCompleted = _playerInstance?.playerState.processingState == ProcessingState.completed;
 
     AudioProcessingState processingState;
-    if (isCompleted) {
+    if (_isSwitchingTrack) {
+      processingState = AudioProcessingState.loading;
+    } else if (isCompleted) {
       processingState = AudioProcessingState.completed;
     } else if (isBuffering) {
       processingState = AudioProcessingState.buffering;
+    } else if (isLoading) {
+      processingState = AudioProcessingState.loading;
     } else if (_currentIndex < 0) {
       processingState = AudioProcessingState.idle;
     } else {
@@ -128,10 +189,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       playing: isPlaying,
       updatePosition: position,
       bufferedPosition: buffered,
-      speed: _player.speed,
+      speed: _playerInstance?.speed ?? 1.0,
       queueIndex: _currentIndex,
-      repeatMode: _mapLoopModeToRepeatMode(_player.loopMode),
-      shuffleMode: _player.shuffleModeEnabled
+      repeatMode: _mapLoopModeToRepeatMode(_playerInstance?.loopMode ?? LoopMode.off),
+      shuffleMode: (_playerInstance?.shuffleModeEnabled ?? false)
           ? AudioServiceShuffleMode.all
           : AudioServiceShuffleMode.none,
     ));
@@ -161,6 +222,11 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         } else {
           stop();
           _player.seek(Duration.zero);
+          _internalQueue.clear();
+          _currentIndex = -1;
+          queue.add([]);
+          mediaItem.add(null);
+          _broadcastState();
         }
       }
     }
@@ -283,6 +349,13 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     final requestId = ++_lastRequestId;
     _isSwitchingTrack = true;
 
+    // Instantly update UI metadata and set to buffering while we fetch the stream
+    final item = _toMediaItem(track);
+    mediaItem.add(item);
+    playbackState.add(playbackState.value.copyWith(
+      processingState: AudioProcessingState.buffering,
+    ));
+
     // "Idle Reset" pattern for DASH thread safety:
     // Instead of disposing/recreating the player (which leaves zombie threads in
     // ntdll.dll), we stop + set idle + wait for the OS to reap the DASH demuxer
@@ -320,15 +393,40 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         int retries = 0;
         while (retries < 2) {
           try {
-            final streamResult = await _addonService.getStreamResult(
-              track.addonTrackId ?? track.id, addonId: track.addonId);
+            AddonStreamResult? streamResult;
+            // Check cache first
+            if (_prefetchCache.containsKey(track.id)) {
+               streamResult = _prefetchCache.remove(track.id);
+               audioUrl = streamResult?.url;
+            } else {
+               streamResult = await _addonService.getStreamResult(
+                 track.addonTrackId ?? track.id, addonId: track.addonId);
+               audioUrl = streamResult?.url;
+            }
             if (requestId != _lastRequestId) return;
 
-            final url = streamResult?.url;
+            String? url = streamResult?.url;
             final format = streamResult?.format?.toLowerCase();
             if (url == null || url.trim().isEmpty) throw Exception('No stream URL found');
 
-            final bool isDash = (format == 'dash' || url.contains('<MPD') || url.contains('.mpd'));
+            // Native redirect resolution
+            if (!kIsWeb && url.startsWith('http') && format != 'dash' && !url.contains('.mpd')) {
+              try {
+                final client = HttpClient();
+                final request = await client.headUrl(Uri.parse(url));
+                request.followRedirects = true;
+                final response = await request.close();
+                if (response.redirects.isNotEmpty) {
+                  url = response.redirects.last.location.toString();
+                  print('[AudioHandler] Resolved redirect to: $url');
+                }
+              } catch (e) {
+                print('[AudioHandler] Redirect resolution skipped/failed: $e');
+              }
+            }
+
+            final String finalUrl = url!;
+            final bool isDash = (format == 'dash' || finalUrl.contains('<MPD') || finalUrl.contains('.mpd'));
 
             if (isDash) {
               if (requestId != _lastRequestId) return;
@@ -337,13 +435,11 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
               if (kIsWeb || PlatformHelper.isWindows || PlatformHelper.isLinux) {
                 if (kIsWeb) {
-                  final manifestUri = await DashService.getManifestUri(url, proxy: proxy, trackId: track.id);
+                  final manifestUri = await DashService.getManifestUri(finalUrl, proxy: proxy, trackId: track.id);
                   DashService.init(manifestUri, proxy);
                   _isDashActive = true;
                   _startPositionPolling();
 
-                  final item = _toMediaItem(track);
-                  mediaItem.add(item);
                   playbackState.add(playbackState.value.copyWith(
                     playing: true,
                     speed: 1.0,
@@ -353,7 +449,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
                   return;
                 } else {
                   DashLocalProxyServer.stop();
-                  final manifest = await DashNativeParser.parse(url);
+                  final manifest = await DashNativeParser.parse(finalUrl);
                   audioUrl = await DashLocalProxyServer.start(
                     manifest,
                     proxyUrl: null, // As requested, do NOT use Cloudflare worker
@@ -362,12 +458,12 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
                   break;
                 }
               } else {
-                audioUrl = url;
+                audioUrl = finalUrl;
                 break;
               }
             } else {
               if (kIsWeb) DashService.stop();
-              audioUrl = url;
+              audioUrl = finalUrl;
               break;
             }
           } catch (e) {
@@ -390,7 +486,6 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
         await _player.setAudioSource(source, initialPosition: startPosition);
         if (requestId != _lastRequestId) return;
-        mediaItem.add(item);
         _player.play();
       } else if (requestId == _lastRequestId) {
         print('[AudioHandler] Failed to resolve playable audio URL for track: ${track.title}');
@@ -398,6 +493,8 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     } catch (e, st) {
       print('[AudioHandler] CRITICAL PLAYBACK ERROR: $e');
       print(st);
+      _isSwitchingTrack = false;
+      _broadcastState();
     } finally {
       print('[AudioHandler] --- Playback Init Complete [ID: $requestId] ---');
     }
@@ -480,6 +577,23 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
           if (_currentIndex >= _internalQueue.length) _currentIndex = 0;
           _playQueueItem(_currentIndex);
         }
+      }
+    }
+  }
+
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {
+    if (oldIndex >= 0 && oldIndex < _internalQueue.length && newIndex >= 0 && newIndex <= _internalQueue.length) {
+      final track = _internalQueue.removeAt(oldIndex);
+      _internalQueue.insert(newIndex, track);
+      queue.add(_internalQueue.map(_toMediaItem).toList());
+      
+      // Update current index
+      if (_currentIndex == oldIndex) {
+        _currentIndex = newIndex;
+      } else if (oldIndex < _currentIndex && newIndex >= _currentIndex) {
+        _currentIndex--;
+      } else if (oldIndex > _currentIndex && newIndex <= _currentIndex) {
+        _currentIndex++;
       }
     }
   }

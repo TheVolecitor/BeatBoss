@@ -14,6 +14,7 @@ class Track {
   final String? addonId;
   final String? addonTrackId; // Original track ID within the addon
   final String? streamURL; // Pre-resolved stream URL (Eclipse spec optional field)
+  final String? infoText; // Extra info text to display next to artist
 
   Track({
     required this.id,
@@ -29,6 +30,7 @@ class Track {
     this.addonId,
     this.addonTrackId,
     this.streamURL,
+    this.infoText,
   });
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -54,6 +56,7 @@ class Track {
       addonId: json['addonId'],
       addonTrackId: json['addonTrackId'],
       streamURL: json['streamURL'] ?? json['url'],
+      infoText: json['infoText'] ?? json['infotext'],
     );
   }
 

@@ -32,7 +32,7 @@ class AddonService extends ChangeNotifier {
 
   final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 20),
+    receiveTimeout: const Duration(minutes: 1),
     headers: {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
@@ -108,6 +108,17 @@ class AddonService extends ChangeNotifier {
     if (!_installedAddons.any((a) => a.id == addonId)) return;
     _activeAddonId = addonId;
     await _settings.setActiveAddonId(addonId);
+    notifyListeners();
+  }
+
+  Future<void> reorderAddons(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _installedAddons.length) return;
+    if (newIndex < 0 || newIndex > _installedAddons.length) return;
+    
+    final item = _installedAddons.removeAt(oldIndex);
+    _installedAddons.insert(newIndex, item);
+    
+    await _settings.saveAddons(_installedAddons);
     notifyListeners();
   }
 
@@ -259,16 +270,32 @@ class AddonService extends ChangeNotifier {
 
   /// Resolve a full stream result (url + metadata) for a track.
   Future<AddonStreamResult?> getStreamResult(String trackId, {String? addonId}) async {
-    final id = addonId ?? _activeAddonId;
-    if (id == null) return null;
+    // 1. If explicit addon provided, try it first
+    if (addonId != null) {
+      final manifest = _getManifest(addonId);
+      if (manifest != null && manifest.supportsStream) {
+        final res = await _tryStreamResult(manifest, trackId);
+        if (res != null) return res;
+      }
+    }
 
-    final manifest = _getManifest(id);
-    if (manifest == null) return null;
+    // 2. Otherwise iterate top-to-bottom prioritizing based on reorderable list
+    for (final manifest in _installedAddons) {
+      if (addonId != null && manifest.id == addonId) continue;
+      if (manifest.supportsStream) {
+        final res = await _tryStreamResult(manifest, trackId);
+        if (res != null) return res;
+      }
+    }
 
+    return null;
+  }
+
+  Future<AddonStreamResult?> _tryStreamResult(AddonManifest manifest, String trackId) async {
     if (manifest.addonType == AddonType.user) {
-      return await _userHandlers[id]?.getStreamResult(trackId);
+      return await _userHandlers[manifest.id]?.getStreamResult(trackId);
     } else {
-      return _serverGetStreamResult(manifest, trackId);
+      return await _serverGetStreamResult(manifest, trackId);
     }
   }
 
@@ -289,6 +316,34 @@ class AddonService extends ChangeNotifier {
 
 
   // ========== Catalog Endpoints ==========
+
+  /// Fetch catalog (tracks/albums/artists) to populate the home screen
+  Future<AddonSearchResult?> getCatalog({String? addonId}) async {
+    // Iterate top-to-bottom prioritizing based on reorderable list
+    for (final manifest in _installedAddons) {
+      if (addonId != null && manifest.id != addonId) continue;
+      
+      if (manifest.supportsCatalog) {
+        if (manifest.addonType == AddonType.user) {
+          // If the user handler supports catalog (extend UserAddonHandler if needed)
+          // For now we'll just skip to HTTP servers or assume user handlers don't implement it yet
+        } else {
+          try {
+            final response = await _dio.get('${manifest.baseUrl}/catalog');
+            if (response.statusCode == 200 && response.data != null) {
+              final data = _toMap(response.data);
+              if (data.isNotEmpty) {
+                return AddonSearchResult.fromJson(data, addonId: manifest.id);
+              }
+            }
+          } catch (e) {
+            print('[AddonService] Server catalog error for ${manifest.id}: $e');
+          }
+        }
+      }
+    }
+    return null;
+  }
 
   Future<AddonAlbum?> getAlbumDetail(String albumId, {String? addonId}) async {
     final id = addonId ?? _activeAddonId;
@@ -359,36 +414,26 @@ class AddonService extends ChangeNotifier {
 
   // ========== Lyrics ==========
 
-  /// Fetch lyrics using the active addon (or a specific one).
-  /// Falls back to other addons if the primary one fails.
+  /// Fetch lyrics prioritizing the top-to-bottom order of installed addons.
   Future<String?> getLyrics(String artist, String title,
       {String? addonId, String? album, int? duration}) async {
-    // 1. Try LRCLIB first (as it is the new built-in lyrics provider)
-    final lrcLibLyrics = await _fetchLyricsFromAddon('net.lrclib', artist, title,
-        album: album, duration: duration);
-    if (lrcLibLyrics != null && lrcLibLyrics.isNotEmpty) return lrcLibLyrics;
-
-    // 2. Try specified or active addon
-    final primaryId = addonId ?? _activeAddonId;
-    if (primaryId != null && primaryId != 'net.lrclib') {
-      final lyrics = await _fetchLyricsFromAddon(primaryId, artist, title,
-          album: album, duration: duration);
+    
+    // 1. If explicit addon provided, try it first
+    if (addonId != null) {
+      final lyrics = await _fetchLyricsFromAddon(addonId, artist, title, album: album, duration: duration);
       if (lyrics != null && lyrics.isNotEmpty) return lyrics;
     }
 
-    // 3. Fallback: Try all other addons that support lyrics
+    // 2. Iterate top-to-bottom over installed addons supporting lyrics
     for (final addon in _installedAddons) {
-      if (addon.id == 'net.lrclib' || addon.id == primaryId) continue;
+      if (addonId != null && addon.id == addonId) continue;
       if (addon.supportsLyrics) {
-        final lyrics = await _fetchLyricsFromAddon(addon.id, artist, title,
-            album: album, duration: duration);
+        final lyrics = await _fetchLyricsFromAddon(addon.id, artist, title, album: album, duration: duration);
         if (lyrics != null && lyrics.isNotEmpty) {
-          print('[AddonService] Lyrics fallback: found in ${addon.name}');
           return lyrics;
         }
       }
     }
-
 
     return null;
   }

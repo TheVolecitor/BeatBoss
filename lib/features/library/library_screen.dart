@@ -13,6 +13,7 @@ import '../shared/batch_download_dialog.dart';
 import '../../core/utils/app_toast.dart';
 import '../favourites/favourites_screen.dart';
 import '../downloads/downloads_screen.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -209,8 +210,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        children: <Widget>[
+              Row(
             children: [
               OutlinedButton.icon(
                 onPressed: () async {
@@ -269,11 +270,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    itemCount: libs.length,
-                    itemBuilder: (context, index) {
-                      return _buildLibraryItem(libs[index], isDark, true);
-                    },
+                : AnimationLimiter(
+                    child: ListView.builder(
+                      itemCount: libs.length,
+                      itemBuilder: (context, index) {
+                        return AnimationConfiguration.staggeredList(
+                          position: index,
+                          duration: const Duration(milliseconds: 375),
+                          child: SlideAnimation(
+                            verticalOffset: 50.0,
+                            child: FadeInAnimation(
+                              child: _buildLibraryItem(libs[index], isDark, true),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -287,8 +299,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        children: <Widget>[
+              Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               IconButton(
@@ -326,11 +338,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               ],
                             ),
                           )
-                        : ListView.builder(
-                            itemCount: _addonLibraries.length,
-                            itemBuilder: (context, index) {
-                              return _buildLibraryItem(_addonLibraries[index], isDark, false);
-                            },
+                        : AnimationLimiter(
+                            child: ListView.builder(
+                              itemCount: _addonLibraries.length,
+                              itemBuilder: (context, index) {
+                                return AnimationConfiguration.staggeredList(
+                                  position: index,
+                                  duration: const Duration(milliseconds: 375),
+                                  child: SlideAnimation(
+                                    verticalOffset: 50.0,
+                                    child: FadeInAnimation(
+                                      child: _buildLibraryItem(_addonLibraries[index], isDark, false),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
           ),
         ],
