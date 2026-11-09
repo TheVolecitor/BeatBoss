@@ -13,6 +13,7 @@ import 'core/services/settings_service.dart';
 import 'core/services/audio_player_service.dart';
 import 'core/services/audio_handler.dart';
 import 'core/services/download_manager_service.dart';
+import 'core/services/stream_cache_service.dart';
 import 'core/services/discord_rpc_service.dart';
 import 'core/services/last_fm_service.dart';
 import 'core/services/youtube_service.dart';
@@ -52,6 +53,16 @@ void main() async {
     final downloadManager =
         DownloadManagerService(settingsService: settingsService);
 
+    // Local stream cache (no-op on web)
+    final streamCacheService =
+        StreamCacheService(settingsService: settingsService);
+    try {
+      await streamCacheService.init();
+    } catch (e) {
+      print('Error initializing stream cache: $e');
+    }
+    downloadManager.attachStreamCache(streamCacheService);
+
     final historyService = HistoryService();
     await historyService.init();
 
@@ -72,6 +83,7 @@ void main() async {
       downloadManager: downloadManager,
       addonService: addonService,
       settingsService: settingsService,
+      streamCache: streamCacheService,
     );
 
     final audioHandler = kIsWeb
@@ -127,6 +139,7 @@ void main() async {
           ChangeNotifierProvider.value(value: historyService),
           ChangeNotifierProvider.value(value: localLibraryService),
           ChangeNotifierProvider.value(value: downloadManager),
+          ChangeNotifierProvider.value(value: streamCacheService),
           ChangeNotifierProvider.value(value: importService),
           ChangeNotifierProvider.value(value: lastFmService),
           ChangeNotifierProvider.value(value: navigationService),

@@ -6,6 +6,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
+import '../../core/services/stream_cache_service.dart';
 import '../../core/services/last_fm_service.dart';
 import '../addons/addons_screen.dart';
 
@@ -31,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     final downloadManager = context.watch<DownloadManagerService>();
+    final streamCache = context.watch<StreamCacheService>();
     final isDark = settings.isDarkMode;
 
     return Center(
@@ -149,6 +151,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 fontWeight: FontWeight.w600)),
                         onTap: _clearCache,
                       ),
+                      if (streamCache.isSupported) ...[
+                        SwitchListTile(
+                          secondary: const Icon(Icons.cached),
+                          title: const Text('Enable local cache'),
+                          subtitle: const Text(
+                              'Keep streamed tracks on this device so they replay faster and offline'),
+                          value: settings.localCacheEnabled,
+                          onChanged: (value) => settings.setLocalCacheEnabled(value),
+                        ),
+                        if (settings.localCacheEnabled)
+                          ListTile(
+                            leading: const Icon(Icons.data_usage),
+                            title: const Text('Cache size limit'),
+                            subtitle: const Text(
+                                'When full, the least recently played tracks are removed'),
+                            trailing: DropdownButton<int>(
+                              value: kCacheSizeOptionsMb.contains(settings.localCacheMaxMb)
+                                  ? settings.localCacheMaxMb
+                                  : null,
+                              hint: Text(_formatMb(settings.localCacheMaxMb)),
+                              items: [
+                                for (final mb in kCacheSizeOptionsMb)
+                                  DropdownMenuItem(value: mb, child: Text(_formatMb(mb))),
+                              ],
+                              onChanged: (mb) {
+                                if (mb != null) settings.setLocalCacheMaxMb(mb);
+                              },
+                            ),
+                          ),
+                        if (settings.localCacheEnabled || streamCache.entryCount > 0)
+                          ListTile(
+                            leading: const Icon(Icons.folder_zip_outlined),
+                            title: const Text('Cache Used'),
+                            subtitle: Text(
+                                '${_formatBytes(streamCache.usedBytes)} of ${_formatBytes(streamCache.maxBytes)} · ${streamCache.entryCount} tracks'),
+                          ),
+                        if (streamCache.entryCount > 0)
+                          ListTile(
+                            leading: const Icon(Icons.delete_sweep_outlined,
+                                color: Colors.red),
+                            title: const Text('Clear Cache',
+                                style: TextStyle(
+                                    color: Colors.red, fontWeight: FontWeight.w600)),
+                            onTap: _clearStreamCache,
+                          ),
+                      ],
                     ],
                   ),
 
@@ -296,6 +344,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  String _formatMb(int mb) => mb >= 1024 ? '${mb ~/ 1024} GB' : '$mb MB';
+
+  void _clearStreamCache() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear Cache?'),
+        content: const Text(
+            'This deletes the cached copies of streamed tracks. Your downloaded tracks are not affected.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              final cache = context.read<StreamCacheService>();
+              await cache.clear();
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cache cleared')),
+                );
+              }
+            },
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _clearCache() {

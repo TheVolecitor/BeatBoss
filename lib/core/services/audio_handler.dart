@@ -15,6 +15,7 @@ import 'dash_service.dart';
 import 'dash_native_parser.dart';
 import 'dash_local_proxy_server.dart';
 import 'native_player_config.dart';
+import 'stream_cache_service.dart';
 
 /// The AudioHandler manages the audio player and the playlist.
 /// It exposes the standard AudioService interface to the UI (and system).
@@ -31,6 +32,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   final DownloadManagerService _downloadManager;
   final AddonService _addonService;
   final SettingsService _settingsService;
+  final StreamCacheService _streamCache;
+
+  // Cache download of the track that is currently streaming (if any)
+  CacheHandle? _cacheHandle;
 
   // Internal Queue State
   List<Track> _internalQueue = [];
@@ -50,10 +55,21 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     required DownloadManagerService downloadManager,
     required AddonService addonService,
     required SettingsService settingsService,
+    required StreamCacheService streamCache,
   })  : _downloadManager = downloadManager,
         _addonService = addonService,
-        _settingsService = settingsService {
+        _settingsService = settingsService,
+        _streamCache = streamCache {
     _init();
+  }
+
+  /// Tells the stream cache how far the current track got, so a track that
+  /// was skipped within seconds is not left behind in the cache.
+  void _releaseCacheHandle() {
+    final handle = _cacheHandle;
+    _cacheHandle = null;
+    handle?.release(_playerInstance?.position ?? Duration.zero);
+    _streamCache.clearPlaying();
   }
 
   // Expose explicit state for UI polling
@@ -108,7 +124,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
           _handleTrackCompletion();
         }
       }),
-      _playerInstance!.durationStream.listen((_) => _broadcastState()),
+      _playerInstance!.durationStream.listen((duration) {
+        if (duration != null) _cacheHandle?.reportDuration(duration);
+        _broadcastState();
+      }),
     ]);
 
     if (kIsWeb) {
@@ -256,6 +275,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> stop() async {
+    _releaseCacheHandle();
     if (kIsWeb) {
       DashService.stop();
       _isDashActive = false;
@@ -341,13 +361,15 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  Future<void> _playQueueItem(int index, {Duration? startPosition}) async {
+  Future<void> _playQueueItem(int index,
+      {Duration? startPosition, bool skipCache = false}) async {
     if (index < 0 || index >= _internalQueue.length) return;
 
     _currentIndex = index;
     final track = _internalQueue[index];
     final requestId = ++_lastRequestId;
     _isSwitchingTrack = true;
+    _releaseCacheHandle();
 
     // Instantly update UI metadata and set to buffering while we fetch the stream
     final item = _toMediaItem(track);
@@ -385,10 +407,20 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       final bool useLocal = !kIsWeb && isDownloaded && localPath != null && PlatformHelper.fileExists(localPath);
 
       String? audioUrl;
+      String? directUrl; // remote URL to fall back to if the cache proxy fails
+      bool usedCache = false;
+
+      // Order: downloaded file, then cached file, then stream (and cache it).
+      final cachedPath =
+          (useLocal || skipCache || kIsWeb) ? null : _streamCache.lookup(track);
 
       if (useLocal) {
         audioUrl = Uri.file(localPath).toString();
         print('[AudioHandler] Playing local file: $audioUrl');
+      } else if (cachedPath != null) {
+        audioUrl = Uri.file(cachedPath).toString();
+        usedCache = true;
+        print('[AudioHandler] Playing cached file: $audioUrl');
       } else {
         int retries = 0;
         while (retries < 2) {
@@ -450,10 +482,20 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
                 } else {
                   DashLocalProxyServer.stop();
                   final manifest = await DashNativeParser.parse(finalUrl);
+                  final sink = skipCache
+                      ? null
+                      : _streamCache.openDashSink(track,
+                          quality: streamResult?.quality);
+                  if (requestId != _lastRequestId) {
+                    sink?.cancel();
+                    return;
+                  }
+                  _cacheHandle = sink;
                   audioUrl = await DashLocalProxyServer.start(
                     manifest,
                     proxyUrl: null, // As requested, do NOT use Cloudflare worker
                     getPosition: () => _player.position.inSeconds.toDouble(),
+                    sink: sink,
                   );
                   break;
                 }
@@ -464,6 +506,30 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
             } else {
               if (kIsWeb) DashService.stop();
               audioUrl = finalUrl;
+              if (!kIsWeb && !skipCache) {
+                // Route the stream through the local cache proxy; any failure
+                // here just means this track plays uncached.
+                try {
+                  final handle = await _streamCache.open(
+                    track,
+                    finalUrl,
+                    format: format,
+                    quality: streamResult?.quality,
+                    headers: const {'User-Agent': 'BeatBoss/1.0 (Flutter)'},
+                  );
+                  if (requestId != _lastRequestId) {
+                    handle?.cancel();
+                    return;
+                  }
+                  if (handle != null) {
+                    _cacheHandle = handle;
+                    directUrl = finalUrl;
+                    audioUrl = handle.playbackUrl;
+                  }
+                } catch (e) {
+                  print('[AudioHandler] Stream cache unavailable: $e');
+                }
+              }
               break;
             }
           } catch (e) {
@@ -484,7 +550,33 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
           tag: item,
         );
 
-        await _player.setAudioSource(source, initialPosition: startPosition);
+        try {
+          await _player.setAudioSource(source, initialPosition: startPosition);
+        } catch (e) {
+          if (usedCache) {
+            // A cached file that will not open is dropped; stream instead.
+            print('[AudioHandler] Cached file failed to open ($e), streaming instead.');
+            _streamCache.invalidate(track);
+            if (requestId == _lastRequestId) {
+              await _playQueueItem(index,
+                  startPosition: startPosition, skipCache: true);
+            }
+            return;
+          }
+          if (directUrl == null) rethrow;
+          // The cache proxy failed: drop it and open the remote URL directly.
+          print('[AudioHandler] Cache proxy failed ($e), opening the stream directly.');
+          _cacheHandle?.cancel();
+          _cacheHandle = null;
+          await _player.setAudioSource(
+            AudioSource.uri(
+              Uri.parse(directUrl),
+              headers: {'User-Agent': 'BeatBoss/1.0 (Flutter)'},
+              tag: item,
+            ),
+            initialPosition: startPosition,
+          );
+        }
         if (requestId != _lastRequestId) return;
         _player.play();
       } else if (requestId == _lastRequestId) {
@@ -649,6 +741,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
     if (name == 'dispose') {
+      _releaseCacheHandle();
       for (final sub in _subscriptions) {
         sub.cancel();
       }

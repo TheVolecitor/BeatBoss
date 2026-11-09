@@ -5,6 +5,7 @@ import '../utils/platform_helper.dart'; // compile-time conditional
 
 import '../models/models.dart';
 import '../models/addon_models.dart';
+import 'stream_cache/cache_models.dart';
 
 /// Settings service - matches original Python Settings class
 /// Handles theme, download location, play history, user credentials
@@ -28,6 +29,10 @@ class SettingsService extends ChangeNotifier {
   static const String _keyAddonsList = 'addons_list';
   static const String _keyActiveAddonId = 'active_addon_id';
   static const String _keyRemovedBuiltins = 'removed_builtins';
+  // Local stream cache
+  static const String _keyLocalCacheEnabled = 'local_cache_enabled';
+  static const String _keyLocalCacheMaxMb = 'local_cache_max_mb';
+  static const String _keyStreamCacheIndex = 'stream_cache_index';
 
   // New settings
   static const String _keyUseLastFmRecommendations = 'use_lastfm_recs';
@@ -62,6 +67,42 @@ class SettingsService extends ChangeNotifier {
   Future<void> setFullscreenLeftPaneProportion(double value) async {
     await _box.put(_keyFullscreenLeftPaneProportion, value.clamp(0.2, 0.8));
     notifyListeners();
+  }
+
+  // ========== Local Stream Cache ==========
+  bool get localCacheEnabled =>
+      _box.get(_keyLocalCacheEnabled, defaultValue: false) == true;
+
+  Future<void> setLocalCacheEnabled(bool enabled) async {
+    await _box.put(_keyLocalCacheEnabled, enabled);
+    notifyListeners();
+  }
+
+  /// Maximum size of the stream cache in MB.
+  int get localCacheMaxMb {
+    final value = _box.get(_keyLocalCacheMaxMb, defaultValue: kDefaultCacheSizeMb);
+    return value is int && value > 0 ? value : kDefaultCacheSizeMb;
+  }
+
+  Future<void> setLocalCacheMaxMb(int mb) async {
+    await _box.put(_keyLocalCacheMaxMb, mb);
+    notifyListeners();
+  }
+
+  /// Cache index: key -> [StreamCacheEntry] JSON.
+  Map<String, dynamic> getStreamCacheIndex() {
+    final data = _box.get(_keyStreamCacheIndex, defaultValue: '{}');
+    try {
+      return Map<String, dynamic>.from(jsonDecode(data));
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// Persists the cache index without notifying settings listeners (it
+  /// changes on every cache hit).
+  Future<void> saveStreamCacheIndex(Map<String, dynamic> index) async {
+    await _box.put(_keyStreamCacheIndex, jsonEncode(index));
   }
 
   // ========== Download Location ==========

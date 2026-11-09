@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'dart:async';
 
 import 'settings_service.dart';
+import 'stream_cache_service.dart';
 import '../models/models.dart';
 import '../utils/platform_helper.dart'; // compile-time conditional
 
@@ -22,6 +23,10 @@ class DownloadManagerService extends ChangeNotifier {
 
   DownloadManagerService({required SettingsService settingsService})
       : _settingsService = settingsService;
+
+  // Set after construction; lets a download reuse a file from the stream cache.
+  StreamCacheService? _streamCache;
+  void attachStreamCache(StreamCacheService cache) => _streamCache = cache;
 
   /// Sanitize filename for safe filesystem storage
   String _sanitizeFilename(String filename) {
@@ -112,6 +117,31 @@ class DownloadManagerService extends ChangeNotifier {
         notifyListeners();
         onComplete?.call(false, e.toString());
         return false;
+      }
+    }
+
+    // ── NATIVE: a cached copy is moved into the downloads folder instead ────
+    final cache = _streamCache;
+    if (cache != null) {
+      try {
+        final downloadDir = await _settingsService.getDownloadLocation();
+        final promoted = await cache.promote(track,
+            destDir: downloadDir, safeName: safeName);
+        if (promoted != null) {
+          print('[Download] Reused cached file: $promoted');
+          try {
+            await _writeMetadata(promoted, track);
+          } catch (e) {
+            print('[Download] Metadata error (ignored): $e');
+          }
+          await _settingsService.registerDownload(trackId, promoted,
+              track: track);
+          notifyListeners();
+          onComplete?.call(true, null);
+          return true;
+        }
+      } catch (e) {
+        print('[Download] Cache reuse failed, downloading instead: $e');
       }
     }
 
