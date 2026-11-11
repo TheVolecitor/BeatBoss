@@ -16,6 +16,16 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 
 }
+// Some plugins (e.g. audiotags) hardcode an old compileSdk, which AGP 9 rejects.
+subprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library")) {
+            extensions.configure<com.android.build.api.dsl.LibraryExtension> {
+                compileSdk = 36
+            }
+        }
+    }
+}
 subprojects {
     project.evaluationDependsOn(":app")
 }
