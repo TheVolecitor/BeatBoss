@@ -490,8 +490,11 @@ class _AppShellState extends State<AppShell> {
 
   Widget? _buildBottomNav(bool isDark) {
     final activeIndex = _selectedIndex > 2 ? 0 : _selectedIndex;
+    // Keep the nav items clear of the system navigation bar (gesture pill or
+    // 3-button bar) when the app is drawn edge-to-edge.
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     return Container(
-      height: 80,
+      height: 80 + bottomInset,
       decoration: BoxDecoration(
         color: isDark ? AppTheme.darkBackground.withOpacity(0.9) : Colors.white.withOpacity(0.9),
         border: Border(
@@ -505,7 +508,7 @@ class _AppShellState extends State<AppShell> {
         child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 12 + bottomInset),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [

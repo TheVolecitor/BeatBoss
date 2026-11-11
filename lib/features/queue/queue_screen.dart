@@ -69,7 +69,8 @@ class QueueScreen extends StatelessWidget {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
+                    padding: EdgeInsets.fromLTRB(
+                        15, 0, 15, MediaQuery.of(context).viewPadding.bottom),
                     itemCount: player.internalQueue.length,
                     itemBuilder: (context, index) {
                       final track = player.internalQueue[index];

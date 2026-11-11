@@ -225,7 +225,8 @@ class SearchScreenState extends State<SearchScreen> {
         final searchAddons = addonService.installedAddons.where((a) => a.supportsSearch).toList();
         return ListView.builder(
           shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: EdgeInsets.fromLTRB(
+              0, 8, 0, 8 + MediaQuery.of(context).viewPadding.bottom),
           itemCount: searchAddons.length,
           itemBuilder: (context, index) {
             final addon = searchAddons[index];

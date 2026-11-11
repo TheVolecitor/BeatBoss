@@ -766,7 +766,8 @@ class _RecentTrackCard extends StatelessWidget {
 
         return ListView(
           shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 20),
+          padding: EdgeInsets.fromLTRB(
+              0, 20, 0, 20 + MediaQuery.of(bContext).viewPadding.bottom),
           children: [
             if (localLibraries.isNotEmpty) ...[
               const Padding(

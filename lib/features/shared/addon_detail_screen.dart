@@ -130,7 +130,7 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
       body: isDesktop 
         ? _buildDesktopSplitPane(context, isDark, player)
         : _buildMobileView(context, isDark, player),
-      bottomNavigationBar: const PlayerBar(),
+      bottomNavigationBar: const PlayerBar(avoidBottomInset: true),
     );
   }
 

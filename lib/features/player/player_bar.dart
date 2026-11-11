@@ -16,7 +16,11 @@ import 'desktop_fullscreen_player.dart';
 
 /// Player Bar - bottom player controls matching original exactly
 class PlayerBar extends StatefulWidget {
-  const PlayerBar({super.key});
+  /// Set when the bar is the bottom-most widget on screen (no bottom nav
+  /// below it), so it stays clear of the system navigation bar.
+  final bool avoidBottomInset;
+
+  const PlayerBar({super.key, this.avoidBottomInset = false});
 
   @override
   State<PlayerBar> createState() => _PlayerBarState();
@@ -76,8 +80,12 @@ class _PlayerBarState extends State<PlayerBar> {
       return const SizedBox.shrink();
     }
 
+    final bottomInset =
+        widget.avoidBottomInset ? MediaQuery.of(context).viewPadding.bottom : 0.0;
+
     return Container(
-      height: isMobile ? 60 : 72, // Increased slightly to 72 to fix overflow
+      height: (isMobile ? 60 : 72) + bottomInset, // 72 on desktop to fix overflow
+      padding: EdgeInsets.only(bottom: bottomInset),
       decoration: BoxDecoration(
         color:
             (isDark ? AppTheme.darkCard : AppTheme.lightCard).withOpacity(0.95),
@@ -750,8 +758,8 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                   minHeight: screenHeight,
                 ),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                  padding: EdgeInsets.fromLTRB(
+                      24, 20, 24, 20 + MediaQuery.of(context).viewPadding.bottom),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
