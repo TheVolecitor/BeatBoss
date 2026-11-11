@@ -14,11 +14,7 @@ class LastFmService extends ChangeNotifier {
     defaultValue: 'https://beatboss-lastfm.thevolecitor.workers.dev/',
   );
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
-  );
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
   String? _sessionKey;
   String? _username;
 
