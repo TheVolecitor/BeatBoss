@@ -181,7 +181,7 @@ class _AppShellState extends State<AppShell> {
                       ),
                     ),
                     // Player bar at bottom - sits flush
-                    const PlayerBar(),
+                    PlayerBar(avoidBottomInset: !isMobile),
                   ],
                 ),
                 // Overlay for Background Imports
