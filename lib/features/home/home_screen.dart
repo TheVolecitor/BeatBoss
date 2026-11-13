@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -11,6 +13,9 @@ import '../../core/models/models.dart';
 import '../../core/models/addon_models.dart';
 import '../../core/services/history_service.dart';
 import '../../core/services/last_fm_service.dart';
+import '../../core/recommendations/rec_models.dart';
+import '../../core/recommendations/recommendation_service.dart';
+import '../../core/recommendations/track_resolver.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/utils/app_toast.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
@@ -31,113 +36,215 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
-  // Recommendations
-  List<Track> _recommendations = [];
+  // Addon catalog
+  List<Track> _catalogTracks = [];
   List<AddonAlbum> _recommendedAlbums = [];
   List<AddonPlaylist> _recommendedPlaylists = [];
   bool _loadingRecommendations = false;
-  bool _hasInitialFetch = false;
-  late LastFmService _lastFmService;
+
+  // Personal recommendations (cached shelf + tracks resolved one by one)
+  RecShelf? _recShelf;
+  List<Track?> _recResolved = [];
+  List<bool> _recDone = [];
+  StreamSubscription<(int, Track?)>? _resolveSub;
+
+  late final LastFmService _lastFmService;
+  late final SettingsService _settingsService;
+  late final RecommendationService _recService;
+  bool _couldRecommend = false;
+  bool _couldUseCatalog = true;
 
   @override
   bool get wantKeepAlive => true;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _lastFmService = context.read<LastFmService>();
-  }
-
-  @override
   void initState() {
     super.initState();
-    // Listen for auth changes to trigger fetch
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _lastFmService.addListener(_onAuthChanged);
-    });
+    _lastFmService = context.read<LastFmService>();
+    _settingsService = context.read<SettingsService>();
+    _recService = context.read<RecommendationService>();
 
-    // Initial fetch check
-    if (!_hasInitialFetch) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _fetchRecommendations();
-      });
-    }
+    // Show the cached shelf immediately, before any network call.
+    _couldRecommend = _recService.canRecommend;
+    _couldUseCatalog = _settingsService.useAddonCatalogRecommendations;
+    _applyShelf(_recService.cachedRecommendedShelf, notify: false);
+
+    // Refetch when Last.fm login or the recommendations setting changes.
+    _lastFmService.addListener(_onSourceChanged);
+    _settingsService.addListener(_onSourceChanged);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchRecommendations());
   }
 
   @override
   void dispose() {
-    _lastFmService.removeListener(_onAuthChanged);
+    _lastFmService.removeListener(_onSourceChanged);
+    _settingsService.removeListener(_onSourceChanged);
+    _resolveSub?.cancel();
     super.dispose();
   }
 
-  void _onAuthChanged() {
+  void _onSourceChanged() {
     if (!mounted) return;
-    final lastFm = context.read<LastFmService>();
-    final settings = context.read<SettingsService>();
-    
-    // Only fetch Last.fm if setting is enabled
-    if (settings.useLastFmRecommendations &&
-        lastFm.isAuthenticated &&
-        _recommendations.isEmpty &&
-        !_loadingRecommendations) {
-      _fetchRecommendations();
+    final canNow = _recService.canRecommend;
+    final catalogNow = _settingsService.useAddonCatalogRecommendations;
+    if (canNow == _couldRecommend && catalogNow == _couldUseCatalog) return;
+
+    final turnedOn =
+        (canNow && !_couldRecommend) || (catalogNow && !_couldUseCatalog);
+    _couldRecommend = canNow;
+    _couldUseCatalog = catalogNow;
+
+    // Drop whatever was just switched off.
+    if (!canNow || !catalogNow) {
+      setState(() {
+        if (!canNow) _applyShelf(null, notify: false);
+        if (!catalogNow) {
+          _catalogTracks = [];
+          _recommendedAlbums = [];
+          _recommendedPlaylists = [];
+        }
+      });
     }
+    if (turnedOn && !_loadingRecommendations) _fetchRecommendations();
   }
 
-  Future<void> _fetchRecommendations() async {
+  /// Shows [shelf] and starts resolving its tracks to playable ones. Does
+  /// nothing when the same shelf is already shown.
+  void _applyShelf(RecShelf? shelf, {bool notify = true}) {
+    if (shelf?.fetchedAt == _recShelf?.fetchedAt && shelf?.id == _recShelf?.id) {
+      return;
+    }
+    _resolveSub?.cancel();
+    _resolveSub = null;
+
+    void update() {
+      _recShelf = shelf;
+      _recResolved = List<Track?>.filled(shelf?.tracks.length ?? 0, null);
+      _recDone = List<bool>.filled(shelf?.tracks.length ?? 0, false);
+    }
+
+    if (notify && mounted) {
+      setState(update);
+    } else {
+      update();
+    }
+    if (shelf == null || shelf.tracks.isEmpty) return;
+
+    _resolveSub = _recService.resolver.resolveMany(shelf.tracks).listen((event) {
+      final (index, track) = event;
+      if (!mounted || _recShelf != shelf) return;
+      setState(() {
+        _recResolved[index] = track;
+        _recDone[index] = true;
+      });
+    });
+  }
+
+  Future<void> _fetchRecommendations({bool force = false}) async {
     if (!mounted) return;
-    if (mounted) setState(() => _loadingRecommendations = true);
+    setState(() => _loadingRecommendations = true);
 
     try {
       final addonService = context.read<AddonService>();
-      final catalog = await addonService.getCatalog();
-      
-      if (!mounted) return;
 
-      List<Track> resolvedTracks = [];
-
-      // If we got catalog tracks, use them
-      if (catalog != null && catalog.tracks.isNotEmpty) {
-        resolvedTracks = catalog.tracks.map((t) => _mapTrack(t)).toList();
-      } 
-      // Fallback to Last.fm if enabled in settings
-      else if (context.read<SettingsService>().useLastFmRecommendations) {
-        final lastFm = context.read<LastFmService>();
-        if (lastFm.isAuthenticated) {
-          final rawRecs = await lastFm.getRecommendations();
-          if (!mounted) return;
-
-          final searchFutures = rawRecs.take(10).map((rec) async {
-            final query = "${rec['name']} ${rec['artist']}";
-            try {
-              final results = await addonService.search(query, limit: 1);
-              if (results != null && results.tracks.isNotEmpty) {
-                return _mapTrack(results.tracks.first);
-              }
-            } catch (e) {
-              print('Search error for $query: $e');
-            }
-            return null;
-          });
-
-          final results = await Future.wait(searchFutures);
-          resolvedTracks = results.whereType<Track>().toList();
+      Future<AddonSearchResult?> loadCatalog() async {
+        // Respect the setting: don't even ask the addon for a catalog.
+        if (!_settingsService.useAddonCatalogRecommendations) return null;
+        try {
+          return await addonService.getCatalog();
+        } catch (e) {
+          print('Error fetching catalog: $e');
+          return null;
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _recommendations = resolvedTracks;
-          _recommendedAlbums = catalog?.albums ?? [];
-          _recommendedPlaylists = catalog?.playlists ?? [];
-          _loadingRecommendations = false;
-          _hasInitialFetch = true;
-        });
-      }
+      // Independent sources: the addon catalog and the personal shelf.
+      final catalogFuture = loadCatalog();
+      final shelfFuture = _recService.recommendedShelf(force: force);
+      final catalog = await catalogFuture;
+      final shelf = await shelfFuture;
+      if (!mounted) return;
+
+      setState(() {
+        _catalogTracks = catalog?.tracks.map(trackFromAddon).toList() ?? [];
+        _recommendedAlbums = catalog?.albums ?? [];
+        _recommendedPlaylists = catalog?.playlists ?? [];
+        _loadingRecommendations = false;
+      });
+      _applyShelf(shelf);
     } catch (e) {
-      print('Error fetching catalog/recommendations: $e');
+      print('Error fetching recommendations: $e');
       if (mounted) setState(() => _loadingRecommendations = false);
     }
+  }
+
+  /// Plays the resolved recommendations as one queue, starting at [index].
+  void _playRecommendation(int index) {
+    final playable = <Track>[];
+    var start = 0;
+    for (var i = 0; i < _recResolved.length; i++) {
+      final t = _recResolved[i];
+      if (t == null) continue;
+      if (i == index) start = playable.length;
+      playable.add(t);
+    }
+    if (playable.isEmpty) return;
+    context.read<AudioPlayerService>().playAll(playable, startIndex: start);
+  }
+
+  /// Shelf entries to display: resolved ones plus those still resolving.
+  /// Entries whose search finished without a match are dropped.
+  List<({int index, RecTrack rec, Track? resolved})> get _recVisibleItems {
+    final shelf = _recShelf;
+    if (shelf == null) return const [];
+    return [
+      for (var i = 0; i < shelf.tracks.length; i++)
+        if (!(_recDone[i] && _recResolved[i] == null))
+          (index: i, rec: shelf.tracks[i], resolved: _recResolved[i]),
+    ];
+  }
+
+  bool get _hasAnyRecommendations =>
+      _catalogTracks.isNotEmpty ||
+      _recVisibleItems.isNotEmpty ||
+      _recommendedAlbums.isNotEmpty ||
+      _recommendedPlaylists.isNotEmpty;
+
+  Widget _buildSectionHeader(String title, {bool showRefresh = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+        if (showRefresh)
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Recommendations',
+            onPressed: _loadingRecommendations
+                ? null
+                : () => _fetchRecommendations(force: true),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTrackGrid({
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+  }) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 150,
+        childAspectRatio: 0.65,
+        crossAxisSpacing: 15,
+        mainAxisSpacing: 15,
+      ),
+      itemCount: itemCount,
+      itemBuilder: itemBuilder,
+    );
   }
 
   @override
@@ -147,20 +254,6 @@ class _HomeScreenState extends State<HomeScreen>
     final isDark = settings.isDarkMode;
 
     return _buildHomeContent(isDark, settings);
-  }
-
-  Track _mapTrack(AddonTrack at) {
-    return Track(
-      id: at.id,
-      title: at.title,
-      artist: at.artist,
-      albumTitle: at.album,
-      albumCover: at.artworkURL,
-      duration: at.duration,
-      addonId: at.addonId,
-      addonTrackId: at.id,
-      streamURL: at.streamURL,
-    );
   }
 
   Widget _buildHomeContent(bool isDark, SettingsService settings) {
@@ -236,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen>
 
           // Recommendations Section
           if (true) ...[
-            if (_loadingRecommendations)
+            if (_loadingRecommendations && !_hasAnyRecommendations)
               const SizedBox(
                 height: 220,
                 child: Center(
@@ -244,41 +337,65 @@ class _HomeScreenState extends State<HomeScreen>
                       CircularProgressIndicator(color: AppTheme.primaryGreen),
                 ),
               )
-            else if (_recommendations.isEmpty && _recommendedAlbums.isEmpty && _recommendedPlaylists.isEmpty)
-              const SizedBox(
+            else if (!_hasAnyRecommendations)
+              SizedBox(
                 height: 100,
                 child: Center(
-                  child: Text('No recommendations found yet.'),
+                  child: Text(
+                    (_recService.canRecommend ||
+                            settings.useAddonCatalogRecommendations)
+                        ? 'No recommendations found yet.'
+                        : 'Recommendations are turned off in Settings.',
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               )
             else ...[
-              if (_recommendations.isNotEmpty) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Tracks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      tooltip: 'Refresh Recommendations',
-                      onPressed: _loadingRecommendations ? null : _fetchRecommendations,
-                    ),
-                  ],
+              if (_catalogTracks.isNotEmpty) ...[
+                _buildSectionHeader(
+                  'From ${context.read<AddonService>().activeAddon?.name ?? 'your addon'}',
+                  showRefresh: _recVisibleItems.isEmpty,
                 ),
                 const SizedBox(height: 15),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 150,
-                    childAspectRatio: 0.65,
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
+                _buildTrackGrid(
+                  itemCount: _catalogTracks.length,
+                  itemBuilder: (context, index) => _RecentTrackCard(
+                    track: _catalogTracks[index],
+                    isDark: isDark,
                   ),
-                  itemCount: _recommendations.length,
-                  itemBuilder: (context, index) {
+                ),
+                const SizedBox(height: 30),
+              ],
+              if (_recVisibleItems.isNotEmpty) ...[
+                _buildSectionHeader(
+                  _recShelf?.title ?? 'Recommended for you',
+                  showRefresh: true,
+                ),
+                const SizedBox(height: 15),
+                _buildTrackGrid(
+                  itemCount: _recVisibleItems.length,
+                  itemBuilder: (context, i) {
+                    final item = _recVisibleItems[i];
+                    final resolved = item.resolved;
+                    if (resolved != null) {
+                      return _RecentTrackCard(
+                        track: resolved,
+                        isDark: isDark,
+                        onTap: () => _playRecommendation(item.index),
+                      );
+                    }
+                    // Not resolved yet: show the Last.fm title/artist as a
+                    // placeholder that can't be played.
                     return _RecentTrackCard(
-                      track: _recommendations[index],
+                      track: Track(
+                        id: item.rec.key,
+                        title: item.rec.title,
+                        artist: item.rec.artist,
+                        albumCover: item.rec.imageUrl,
+                      ),
                       isDark: isDark,
+                      onTap: () {},
+                      showMenu: false,
                     );
                   },
                 ),
@@ -288,11 +405,15 @@ class _HomeScreenState extends State<HomeScreen>
                 HorizontalScrollWrapper(
                   title: 'Albums',
                   titleStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                  trailing: _recommendations.isEmpty ? IconButton(
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Refresh Recommendations',
-                    onPressed: _loadingRecommendations ? null : _fetchRecommendations,
-                  ) : null,
+                  trailing: (_catalogTracks.isEmpty && _recVisibleItems.isEmpty)
+                      ? IconButton(
+                          icon: const Icon(Icons.refresh),
+                          tooltip: 'Refresh Recommendations',
+                          onPressed: _loadingRecommendations
+                              ? null
+                              : () => _fetchRecommendations(force: true),
+                        )
+                      : null,
                   listHeight: 210,
                   itemWidth: 140,
                   itemSpacing: 15,
@@ -553,10 +674,18 @@ class _RecentTrackCard extends StatelessWidget {
   final bool isDark;
   final double? width;
 
+  /// Overrides the default tap (play just this track).
+  final VoidCallback? onTap;
+
+  /// Whether to show the overflow menu. Off for placeholder cards.
+  final bool showMenu;
+
   const _RecentTrackCard({
     required this.track,
     required this.isDark,
     this.width,
+    this.onTap,
+    this.showMenu = true,
   });
 
   @override
@@ -564,7 +693,7 @@ class _RecentTrackCard extends StatelessWidget {
     final player = context.read<AudioPlayerService>();
 
     return GestureDetector(
-      onTap: () => player.playSingleTrack(track),
+      onTap: onTap ?? () => player.playSingleTrack(track),
       child: Container(
         width: width,
         margin: const EdgeInsets.only(right: 15, bottom: 15),
@@ -604,6 +733,7 @@ class _RecentTrackCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (showMenu)
                     Positioned(
                       top: 5,
                       right: 5,

@@ -18,6 +18,8 @@ import 'core/services/discord_rpc_service.dart';
 import 'core/services/last_fm_service.dart';
 import 'core/services/youtube_service.dart';
 import 'core/services/spotify_service.dart';
+import 'core/recommendations/lastfm_recommendation_provider.dart';
+import 'core/recommendations/recommendation_service.dart';
 
 import 'features/app_shell.dart';
 
@@ -105,6 +107,25 @@ void main() async {
       print('Error initializing LastFM: $e');
     }
 
+    // Recommendations: Last.fm is the only provider for now; more can be
+    // added to this list and picked in Settings.
+    final recommendationService = RecommendationService(
+      settings: settingsService,
+      addons: addonService,
+      providers: [LastFmRecommendationProvider(lastFmService)],
+    );
+    try {
+      await recommendationService.init();
+    } catch (e) {
+      print('Error initializing recommendations: $e');
+    }
+    // Don't keep personal recommendations on disk after logout.
+    lastFmService.addListener(() {
+      if (!lastFmService.isAuthenticated) {
+        recommendationService.clearShelves();
+      }
+    });
+
     final discordRpcService = DiscordRpcService();
     discordRpcService.initialize();
 
@@ -142,6 +163,7 @@ void main() async {
           ChangeNotifierProvider.value(value: streamCacheService),
           ChangeNotifierProvider.value(value: importService),
           ChangeNotifierProvider.value(value: lastFmService),
+          ChangeNotifierProvider.value(value: recommendationService),
           ChangeNotifierProvider.value(value: navigationService),
           Provider.value(value: discordRpcService),
           Provider.value(value: youtubeService),
