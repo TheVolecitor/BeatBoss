@@ -14,6 +14,9 @@ class LastFmService extends ChangeNotifier {
     defaultValue: 'https://beatboss-lastfm.thevolecitor.workers.dev/',
   );
 
+  LastFmService({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   String? _sessionKey;
   String? _username;
@@ -37,7 +40,7 @@ class LastFmService extends ChangeNotifier {
     lastAuthError = null;
 
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse(_baseUrl),
         body: {'method': 'auth.getToken'},
       );
@@ -82,7 +85,7 @@ class LastFmService extends ChangeNotifier {
   /// Returns false if the user has not approved the token yet.
   Future<bool> completeAuth(String token) async {
     try {
-      final response = await http.post(
+      final response = await _client.post(
         Uri.parse(_baseUrl),
         body: {'method': 'auth.getSession', 'token': token},
       );
@@ -117,12 +120,40 @@ class LastFmService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// POSTs [method] with [params] to the Worker, which adds the API key and
+  /// signs the request. Returns the decoded JSON, or null on an HTTP error, an
+  /// API error payload (`{"error": ..}`), or a network failure.
+  Future<Map<String, dynamic>?> callApi(
+    String method,
+    Map<String, String> params,
+  ) async {
+    try {
+      final response = await _client.post(
+        Uri.parse(_baseUrl),
+        body: {'method': method, 'format': 'json', ...params},
+      );
+      if (response.statusCode != 200) {
+        print('Last.fm $method failed: HTTP ${response.statusCode}');
+        return null;
+      }
+      final data = jsonDecode(response.body);
+      if (data is! Map<String, dynamic>) return null;
+      if (data.containsKey('error')) {
+        print('Last.fm $method error: ${data['error']} ${data['message']}');
+        return null;
+      }
+      return data;
+    } catch (e) {
+      print('Last.fm $method Error: $e');
+      return null;
+    }
+  }
+
   /// Update "Now Playing" status via Worker
   Future<void> updateNowPlaying(Track track) async {
     if (_sessionKey == null) return;
 
     final params = {
-      'method': 'track.updateNowPlaying',
       'artist': track.artist,
       'track': track.title,
       'sk': _sessionKey!,
@@ -132,11 +163,7 @@ class LastFmService extends ChangeNotifier {
       params['album'] = track.albumTitle!;
     }
 
-    try {
-      await http.post(Uri.parse(_baseUrl), body: params);
-    } catch (e) {
-      print('Last.fm NowPlaying Error: $e');
-    }
+    await callApi('track.updateNowPlaying', params);
   }
 
   /// Scrobble a track via Worker
@@ -144,7 +171,6 @@ class LastFmService extends ChangeNotifier {
     if (_sessionKey == null) return;
 
     final params = {
-      'method': 'track.scrobble',
       'artist': track.artist,
       'track': track.title,
       'timestamp': (timestamp.millisecondsSinceEpoch ~/ 1000).toString(),
@@ -155,25 +181,28 @@ class LastFmService extends ChangeNotifier {
       params['album'] = track.albumTitle!;
     }
 
-    try {
-      // The worker handles signing and forwarding to Last.fm
-      await http.post(Uri.parse(_baseUrl), body: params);
-      print('Last.fm scrobbled: ${track.title}');
-    } catch (e) {
-      print('Last.fm Scrobble Error: $e');
-    }
+    // The worker handles signing and forwarding to Last.fm
+    final result = await callApi('track.scrobble', params);
+    if (result != null) print('Last.fm scrobbled: ${track.title}');
   }
 
-  Future<List<Map<String, String>>> getRecommendations() async {
-    if (_username == null) return [];
+  Future<List<Map<String, String>>> getRecommendations() =>
+      getStation('recommended');
 
-    // Direct request to Last.fm player API as requested
+  /// Fetches one of the user's website stations: `recommended`, `mix` or
+  /// `library`. Returns `[{name, artist}]`, or an empty list when the station
+  /// is unavailable.
+  Future<List<Map<String, String>>> getStation(String kind) async {
+    if (_username == null) return [];
+    if (!const {'recommended', 'mix', 'library'}.contains(kind)) return [];
+
+    // Unauthenticated request to the Last.fm player station endpoint.
     final url =
-        'https://www.last.fm/player/station/user/$_username/recommended';
+        'https://www.last.fm/player/station/user/$_username/$kind';
 
     try {
-      print('Fetching recommendations from: $url');
-      final response = await http.get(Uri.parse(url));
+      print('Fetching $kind station from: $url');
+      final response = await _client.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -192,13 +221,13 @@ class LastFmService extends ChangeNotifier {
           }).toList();
         }
       } else {
-        print('Last.fm Recommendations Error: ${response.statusCode}');
+        print('Last.fm $kind station error: ${response.statusCode}');
       }
     } catch (e) {
       if (e.toString().contains('11001') || e.toString().contains('No such host')) {
-        print('[LastFmService] Host resolution failed for recommendations. Last.fm might be unreachable or DNS is failing.');
+        print('[LastFmService] Host resolution failed for the $kind station. Last.fm might be unreachable or DNS is failing.');
       } else {
-        print('Last.fm Recommendations Error: $e');
+        print('Last.fm $kind station error: $e');
       }
     }
     return [];
