@@ -10,6 +10,7 @@ import '../../core/services/local_library_service.dart';
 import '../../core/services/addon_service.dart';
 import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_screen.dart';
+import '../queue/queue_widgets.dart';
 import '../search/search_screen.dart';
 import '../shared/addon_detail_screen.dart';
 import 'desktop_fullscreen_player.dart';
@@ -744,6 +745,9 @@ class _ExpandedMobilePlayer extends StatelessWidget {
         final sectionSpacing = isSmallScreen ? 15.0 : 30.0;
 
         return Consumer<AudioPlayerService>(builder: (context, player, _) {
+          // The sheet is opened with the track that was playing at that moment;
+          // follow the player so Next/Previous update art, title and artist.
+          final track = player.currentTrack ?? this.track;
           return Container(
             decoration: BoxDecoration(
               color:
@@ -994,6 +998,16 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                 ),
                               );
                             },
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.radio,
+                                color: player.radioSeed != null
+                                    ? AppTheme.primaryGreen
+                                    : secondaryColor),
+                            tooltip: player.radioSeed != null
+                                ? 'Stop radio'
+                                : 'Start radio',
+                            onPressed: () => toggleRadio(context, player, track),
                           ),
                           TextButton.icon(
                             icon:

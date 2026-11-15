@@ -38,6 +38,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyUseLastFmRecommendations = 'use_lastfm_recs';
   static const String _keyRecProvider = 'rec_provider';
   static const String _keyUseAddonCatalogRecs = 'use_addon_catalog_recs';
+  static const String _keyAutoplaySimilar = 'autoplay_similar';
   static const String _keyEnablePrefetch = 'enable_prefetch';
   static const String _keyPrefetchDuration = 'prefetch_duration';
   static const String _keyCrossfadeDuration = 'crossfade_duration';
@@ -366,8 +367,19 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Which recommendation source is active (see `RecommendationProvider.id`).
+  /// Value of [recProviderId] that switches every recommendation source off:
+  /// no personal recommendations, no autoplay, no radio.
+  static const String recSourceOff = 'off';
+
+  /// Which recommendation source is active (see `RecommendationProvider.id`),
+  /// or [recSourceOff].
   String get recProviderId => _box.get(_keyRecProvider, defaultValue: 'lastfm');
+
+  /// A recommendation source is switched on (not [recSourceOff]).
+  bool get recSourceEnabled => recProviderId != recSourceOff;
+
+  /// Autoplay is effectively on: its own switch, and a source to ask.
+  bool get autoplayActive => autoplaySimilar && recSourceEnabled;
   Future<void> setRecProviderId(String value) async {
     await _box.put(_keyRecProvider, value);
     notifyListeners();
@@ -379,6 +391,14 @@ class SettingsService extends ChangeNotifier {
       _box.get(_keyUseAddonCatalogRecs, defaultValue: true);
   Future<void> setUseAddonCatalogRecommendations(bool value) async {
     await _box.put(_keyUseAddonCatalogRecs, value);
+    notifyListeners();
+  }
+
+  /// When the queue runs out, fill it with songs similar to the one playing.
+  /// This sends the song's title and artist to Last.fm, so it has a toggle.
+  bool get autoplaySimilar => _box.get(_keyAutoplaySimilar, defaultValue: true);
+  Future<void> setAutoplaySimilar(bool value) async {
+    await _box.put(_keyAutoplaySimilar, value);
     notifyListeners();
   }
 

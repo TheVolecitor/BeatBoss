@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../lyrics/lyrics_screen.dart';
+import '../queue/queue_widgets.dart';
 
 class DesktopFullscreenPlayer extends StatefulWidget {
   const DesktopFullscreenPlayer({super.key});
@@ -300,6 +301,14 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   color: player.loopMode != LoopMode.off ? AppTheme.primaryGreen : (isDark ? Colors.white54 : Colors.black54),
                                   onPressed: player.toggleLoop,
                                 ),
+                                const SizedBox(width: 24),
+                                IconButton(
+                                  icon: const Icon(Icons.radio),
+                                  iconSize: 28,
+                                  tooltip: player.radioSeed != null ? 'Stop radio' : 'Start radio',
+                                  color: player.radioSeed != null ? AppTheme.primaryGreen : (isDark ? Colors.white54 : Colors.black54),
+                                  onPressed: () => toggleRadio(context, player, track),
+                                ),
                               ],
                             ),
                             ),
@@ -435,6 +444,10 @@ class _QueueView extends StatelessWidget {
     return ReorderableListView.builder(
       buildDefaultDragHandles: false,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      header: const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: QueueControls(),
+      ),
       itemCount: player.internalQueue.length,
       onReorder: (oldIndex, newIndex) {
         if (oldIndex < newIndex) {
@@ -446,8 +459,7 @@ class _QueueView extends StatelessWidget {
         final track = player.internalQueue[index];
         final isPlaying = index == player.currentIndex;
 
-        return Container(
-          key: ValueKey('${track.id}_$index'),
+        final tile = Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: isPlaying
@@ -519,6 +531,20 @@ class _QueueView extends StatelessWidget {
               ],
             ),
             onTap: () => player.playFromQueue(index),
+          ),
+        );
+
+        // The first track autoplay added carries the section label with it.
+        return KeyedSubtree(
+          key: ValueKey('${track.id}_$index'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (index == player.autoplayStartIndex)
+                const AutoplaySectionLabel(),
+              tile,
+            ],
           ),
         );
       },

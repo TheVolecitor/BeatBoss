@@ -209,18 +209,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     isDark: isDark,
                     children: [
                       _LastFmTile(isDark: isDark),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Recommendations: the source comes first, everything that
+                  // needs it sits below and is disabled when it is off.
+                  _SettingsSection(
+                    title: 'Recommendations',
+                    isDark: isDark,
+                    children: [
+                      Builder(builder: (context) {
+                        final providers =
+                            context.read<RecommendationService>().providers;
+                        final selected = !settings.recSourceEnabled
+                            ? SettingsService.recSourceOff
+                            : (providers.any((p) => p.id == settings.recProviderId)
+                                ? settings.recProviderId
+                                : providers.first.id);
+                        return ListTile(
+                          leading: const Icon(Icons.hub_outlined),
+                          title: const Text('Recommendation source'),
+                          subtitle: const Text(
+                              'Where recommendations, autoplay and radio come from. Off turns them all off.'),
+                          trailing: DropdownButton<String>(
+                            value: selected,
+                            underline: const SizedBox.shrink(),
+                            items: [
+                              for (final p in providers)
+                                DropdownMenuItem(
+                                  value: p.id,
+                                  child: Text(p.displayName),
+                                ),
+                              const DropdownMenuItem(
+                                value: SettingsService.recSourceOff,
+                                child: Text('Off'),
+                              ),
+                            ],
+                            onChanged: (id) {
+                              if (id != null) settings.setRecProviderId(id);
+                            },
+                          ),
+                        );
+                      }),
                       ListTile(
+                        enabled: settings.recSourceEnabled,
                         leading: const Icon(Icons.recommend_outlined),
                         title: const Text('Personal recommendations'),
                         subtitle: const Text(
                             'Uses your Last.fm username to fetch recommendations for the home screen'),
                         trailing: Switch(
                           value: settings.useLastFmRecommendations,
-                          onChanged: (val) =>
-                              settings.setUseLastFmRecommendations(val),
+                          onChanged: settings.recSourceEnabled
+                              ? (val) => settings.setUseLastFmRecommendations(val)
+                              : null,
                           activeThumbColor: AppTheme.primaryGreen,
                         ),
                       ),
+                      Builder(builder: (context) {
+                        final sourceName =
+                            context.read<RecommendationService>().active.displayName;
+                        return ListTile(
+                          enabled: settings.recSourceEnabled,
+                          leading: const Icon(Icons.auto_awesome),
+                          title: const Text('Autoplay similar songs'),
+                          subtitle: Text(
+                              "When your queue ends, sends the playing song's title and artist to $sourceName to find similar songs"),
+                          trailing: Switch(
+                            value: settings.autoplaySimilar,
+                            onChanged: settings.recSourceEnabled
+                                ? (val) => settings.setAutoplaySimilar(val)
+                                : null,
+                            activeThumbColor: AppTheme.primaryGreen,
+                          ),
+                        );
+                      }),
                       ListTile(
                         leading: const Icon(Icons.extension_outlined),
                         title: const Text('Addon recommendations'),
@@ -233,32 +297,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           activeThumbColor: AppTheme.primaryGreen,
                         ),
                       ),
-                      Builder(builder: (context) {
-                        final providers =
-                            context.read<RecommendationService>().providers;
-                        final selected = providers.any(
-                                (p) => p.id == settings.recProviderId)
-                            ? settings.recProviderId
-                            : providers.first.id;
-                        return ListTile(
-                          leading: const Icon(Icons.hub_outlined),
-                          title: const Text('Recommendation source'),
-                          trailing: DropdownButton<String>(
-                            value: selected,
-                            underline: const SizedBox.shrink(),
-                            items: [
-                              for (final p in providers)
-                                DropdownMenuItem(
-                                  value: p.id,
-                                  child: Text(p.displayName),
-                                ),
-                            ],
-                            onChanged: (id) {
-                              if (id != null) settings.setRecProviderId(id);
-                            },
-                          ),
-                        );
-                      }),
                     ],
                   ),
 

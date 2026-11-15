@@ -22,6 +22,86 @@ String normalizeForMatch(String s) {
   return r.replaceAll(_spaces, ' ').trim();
 }
 
+// ---- Names for looking a song up in a recommendation source ----
+//
+// Addons often return decorated names ("Creep (Official Video)", an artist
+// called "Radiohead - Topic" or "RadioheadVEVO"). Last.fm only knows the clean
+// ones, so lookups try cleaned-up variants too.
+
+final _titleDashSuffix = RegExp(
+  r'\s*[-–—|]\s*(?:\d{4}\s+)?(official|lyrics?|audio|video|remaster(ed)?|live|hd|4k|mv|visuali[sz]er|music video)\b.*$',
+  caseSensitive: false,
+);
+final _titleFeat =
+    RegExp(r'\s+(feat\.?|ft\.?|featuring)\s+.*$', caseSensitive: false);
+final _artistTopic = RegExp(r'\s*[-–—]\s*topic$', caseSensitive: false);
+final _artistVevo = RegExp(r'\s*vevo$', caseSensitive: false);
+final _artistSplit = RegExp(
+  r'\s*(?:,|;|&)\s*|\s+(?:feat\.?|ft\.?|featuring|x|with)\s+',
+  caseSensitive: false,
+);
+
+/// [title] without brackets, "- Official Video" style suffixes, "feat." parts
+/// and a leading "Artist - " (for any of [artists]). Falls back to [title]
+/// when nothing is left.
+String cleanTitleForLookup(String title, [List<String> artists = const []]) {
+  var t = title.replaceAll(_brackets, ' ');
+  t = t.replaceAll(_titleDashSuffix, '');
+  t = t.replaceAll(_titleFeat, '');
+  for (final artist in artists) {
+    if (artist.trim().isEmpty) continue;
+    t = t.replaceFirst(
+      RegExp('^\\s*${RegExp.escape(artist.trim())}\\s*[-–—:]\\s*',
+          caseSensitive: false),
+      '',
+    );
+  }
+  t = t.replaceAll(_spaces, ' ').trim();
+  return t.isEmpty ? title.trim() : t;
+}
+
+/// The first artist of a credit like "A, B", "A & B" or "A feat. B", without
+/// "- Topic" or "VEVO" channel suffixes.
+String primaryArtist(String artist) {
+  final a =
+      artist.replaceAll(_artistTopic, '').replaceAll(_artistVevo, '').trim();
+  final first = a.split(_artistSplit).first.trim();
+  return first.isEmpty ? artist.trim() : first;
+}
+
+/// Artist names to try for an artist-level lookup, original first.
+List<String> artistVariants(String artist) {
+  final result = <String>[];
+  for (final a in [artist.trim(), primaryArtist(artist)]) {
+    if (a.isNotEmpty && !result.contains(a)) result.add(a);
+  }
+  return result;
+}
+
+/// (artist, title) pairs to try for a song lookup, the original first. A clean
+/// name gives exactly one pair, so well-named songs cost a single request.
+List<({String artist, String title})> lookupVariants(
+    String artist, String title) {
+  final primary = primaryArtist(artist);
+  final cleaned = cleanTitleForLookup(title, [artist, primary]);
+  final seen = <String>{};
+  final result = <({String artist, String title})>[];
+  for (final a in artistVariants(artist)) {
+    for (final t in [title.trim(), cleaned]) {
+      if (t.isNotEmpty && seen.add('$a|$t')) {
+        result.add((artist: a, title: t));
+      }
+    }
+  }
+  return result;
+}
+
+/// Identity of a song for "have I already got this one" checks. Unlike
+/// `RecTrack.key` it ignores decoration, so "Song (Remastered)" and "Song"
+/// count as the same song.
+String matchKey(String artist, String title) =>
+    '${normalizeForMatch(artist)}|${normalizeForMatch(title)}';
+
 final _versionLabel = RegExp(
   r'^(radio edit|edit|remix|mix|extended|acoustic|version|deluxe|instrumental|mono|stereo|live|clean|explicit|dub|session|demo|bonus|re recorded|orchestral)(\b|\s|$)',
   caseSensitive: false,

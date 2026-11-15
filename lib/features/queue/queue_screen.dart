@@ -5,6 +5,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
+import 'queue_widgets.dart';
+
+// Row markers for the section labels (track rows use their queue index).
+const int _userSectionRow = -1;
+const int _autoplaySectionRow = -2;
 
 /// Queue Screen - display and manage play queue matching original
 class QueueScreen extends StatelessWidget {
@@ -15,6 +20,17 @@ class QueueScreen extends StatelessWidget {
     final player = context.watch<AudioPlayerService>();
     final settings = context.watch<SettingsService>();
     final isDark = settings.isDarkMode;
+
+    // List rows: a track index (>= 0) or a section label. The labels only
+    // appear once autoplay has added tracks.
+    final autoplayStart = player.autoplayStartIndex;
+    final rows = <int>[
+      if (autoplayStart != null) _userSectionRow,
+      for (var i = 0; i < player.internalQueue.length; i++) ...[
+        if (i == autoplayStart) _autoplaySectionRow,
+        i,
+      ],
+    ];
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
@@ -37,7 +53,7 @@ class QueueScreen extends StatelessWidget {
 
           // Header
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
             child: Row(
               children: [
                 Text(
@@ -50,11 +66,17 @@ class QueueScreen extends StatelessWidget {
                 ),
                 const Spacer(),
                 TextButton(
-                  onPressed: player.clearQueue,
+                  onPressed: player.clearQueueKeepCurrent,
                   child: const Text('Clear Queue'),
                 ),
               ],
             ),
+          ),
+
+          // Radio label and the autoplay switch
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 12, 8),
+            child: QueueControls(),
           ),
 
           // Queue content
@@ -71,8 +93,17 @@ class QueueScreen extends StatelessWidget {
                 : ListView.builder(
                     padding: EdgeInsets.fromLTRB(
                         15, 0, 15, MediaQuery.of(context).viewPadding.bottom),
-                    itemCount: player.internalQueue.length,
-                    itemBuilder: (context, index) {
+                    itemCount: rows.length,
+                    itemBuilder: (context, rowIndex) {
+                      final row = rows[rowIndex];
+                      if (row == _userSectionRow) {
+                        return const QueueSectionLabel('Your queue');
+                      }
+                      if (row == _autoplaySectionRow) {
+                        return const AutoplaySectionLabel();
+                      }
+
+                      final index = row;
                       final track = player.internalQueue[index];
                       final isPlaying = index == player.currentIndex;
 

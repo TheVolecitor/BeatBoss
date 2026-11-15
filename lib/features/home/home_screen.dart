@@ -22,6 +22,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 import '../import/playlist_import_dialog.dart';
 import '../search/search_screen.dart';
+import '../queue/queue_widgets.dart';
 import '../shared/horizontal_scroll_wrapper.dart';
 
 /// Home Screen - displays play history and welcome message
@@ -812,6 +813,9 @@ class _RecentTrackCard extends StatelessWidget {
                                 player.playNext(track);
                                 AppToast.show(context, 'Will play next');
                                 break;
+                              case 'start_radio':
+                                startRadioWithFeedback(context, player, track);
+                                break;
                               case 'download':
                                 final addonService =
                                     context.read<AddonService>();
@@ -856,6 +860,16 @@ class _RecentTrackCard extends StatelessWidget {
                                   Icon(Icons.playlist_play, size: 20),
                                   SizedBox(width: 10),
                                   Text('Play Next'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'start_radio',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.radio, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Start Radio'),
                                 ],
                               ),
                             ),

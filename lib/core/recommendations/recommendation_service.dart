@@ -46,8 +46,12 @@ class RecommendationService extends ChangeNotifier {
         orElse: () => _providers.first,
       );
 
-  /// The user switched on personal recommendations in Settings.
-  bool get enabled => _settings.useLastFmRecommendations;
+  /// A recommendation source is switched on in Settings (not "Off").
+  bool get sourceEnabled => _settings.recSourceEnabled;
+
+  /// The user switched on personal recommendations in Settings (and a source
+  /// is on).
+  bool get enabled => sourceEnabled && _settings.useLastFmRecommendations;
 
   /// Personal recommendations are switched on and the provider has a login.
   bool get canRecommend => enabled && active.isLoggedIn;
@@ -125,9 +129,37 @@ class RecommendationService extends ChangeNotifier {
     );
   }
 
-  /// Tracks similar to [seed], used for autoplay and song radio.
-  Future<List<RecTrack>> similarTo(Track seed, {int limit = 50}) =>
-      active.similarTracks(seed.artist, seed.title, limit: limit);
+  /// Tracks similar to [seed], used for autoplay and song radio. Addon names
+  /// are often decorated, so cleaned-up variants are tried when the original
+  /// isn't recognised.
+  Future<List<RecTrack>> similarTo(Track seed, {int limit = 50}) async {
+    if (!sourceEnabled) return const [];
+    for (final v in lookupVariants(seed.artist, seed.title)) {
+      final found = await active.similarTracks(v.artist, v.title, limit: limit);
+      if (found.isNotEmpty) return found;
+    }
+    return const [];
+  }
+
+  /// Artists similar to [artist] (any credit format).
+  Future<List<RecArtist>> similarArtistsOf(String artist, {int limit = 20}) async {
+    if (!sourceEnabled) return const [];
+    for (final name in artistVariants(artist)) {
+      final found = await active.similarArtists(name, limit: limit);
+      if (found.isNotEmpty) return found;
+    }
+    return const [];
+  }
+
+  /// Top tracks of [artist] (any credit format).
+  Future<List<RecTrack>> topTracksOf(String artist, {int limit = 30}) async {
+    if (!sourceEnabled) return const [];
+    for (final name in artistVariants(artist)) {
+      final found = await active.artistTopTracks(name, limit: limit);
+      if (found.isNotEmpty) return found;
+    }
+    return const [];
+  }
 
   /// Removes every cached shelf (call on logout so personal data doesn't
   /// outlive the session).

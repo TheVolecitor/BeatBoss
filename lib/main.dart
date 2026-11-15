@@ -18,6 +18,7 @@ import 'core/services/discord_rpc_service.dart';
 import 'core/services/last_fm_service.dart';
 import 'core/services/youtube_service.dart';
 import 'core/services/spotify_service.dart';
+import 'core/recommendations/autoplay_controller.dart';
 import 'core/recommendations/lastfm_recommendation_provider.dart';
 import 'core/recommendations/recommendation_service.dart';
 
@@ -119,6 +120,14 @@ void main() async {
     } catch (e) {
       print('Error initializing recommendations: $e');
     }
+    // Autoplay: when the queue runs low, the handler asks for similar songs.
+    final autoplayController = AutoplayController(
+      recs: recommendationService,
+      history: historyService,
+    );
+    handlerInstance.autoplaySupplier = (seeds, queue) =>
+        autoplayController.nextBatch(seeds: seeds, queue: queue);
+
     // Don't keep personal recommendations on disk after logout.
     lastFmService.addListener(() {
       if (!lastFmService.isAuthenticated) {

@@ -20,11 +20,24 @@ class AudioPlayerService with ChangeNotifier {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   Duration _bufferedPosition = Duration.zero; // Added
+
+  /// True from the moment the track changes until the player reports the new
+  /// track as ready. The new track's length is known immediately (from its
+  /// metadata), but the player's position still belongs to the old track, so it
+  /// is ignored until then. Otherwise the progress bar jumps (2:00 of the old
+  /// song shows as 67% of a 3:00 song) and then falls back to zero.
+  bool _loadingNewTrack = false;
   double _volume = 0.8;
   bool _isBuffering = false;
 
   List<Track> _queue = [];
   int _currentIndex = -1;
+
+  // Autoplay / radio: where the autoplay section of the queue starts, the song
+  // it follows, and whether the user started a radio from a song.
+  int? _autoplayStartIndex;
+  Track? _autoplaySeed;
+  Track? _radioSeed;
 
   // Custom LoopMode mirroring AudioService RepeatMode
   LoopMode _loopMode = LoopMode.off;
@@ -38,6 +51,17 @@ class AudioPlayerService with ChangeNotifier {
   // Getters
   List<Track> get queue => _queue;
   List<Track> get internalQueue => _queue;
+
+  /// Index in [queue] of the first track autoplay added, or null if none.
+  int? get autoplayStartIndex => _autoplayStartIndex;
+
+  /// The song autoplay is following (the last one the user chose).
+  Track? get autoplaySeed => _autoplaySeed;
+
+  /// The song a radio was started from, or null when no radio is active (the
+  /// handler ends a radio by itself, e.g. when the recommendation source is
+  /// switched off).
+  Track? get radioSeed => _handler.isRadioActive ? _radioSeed : null;
   Track? get currentTrack => _currentTrack;
   bool get isPlaying => _isPlaying;
   Duration get duration => _duration;
@@ -108,8 +132,13 @@ class AudioPlayerService with ChangeNotifier {
 
     // Listen to Playback State
     _handler.playbackState.listen((state) {
-      _position = state.position;
-      _bufferedPosition = state.bufferedPosition; // Added
+      if (state.processingState == AudioProcessingState.ready ||
+          state.processingState == AudioProcessingState.idle) {
+        _loadingNewTrack = false; // the new track is up (or nothing is loading)
+      }
+      _position = _loadingNewTrack ? Duration.zero : state.position;
+      _bufferedPosition =
+          _loadingNewTrack ? Duration.zero : state.bufferedPosition;
       _isBuffering = state.processingState == AudioProcessingState.buffering || 
                      state.processingState == AudioProcessingState.loading;
       _updateCurrentLyric(); // Keep lyrics in sync with position
@@ -145,6 +174,7 @@ class AudioPlayerService with ChangeNotifier {
     // Listen to MediaItem (Current Track)
     _handler.mediaItem.listen((item) {
       if (item != null) {
+        final previousId = _currentTrack?.id;
         if (item.extras != null && item.extras!.containsKey('track')) {
           _currentTrack =
               Track.fromJson(Map<String, dynamic>.from(item.extras!['track']));
@@ -157,6 +187,13 @@ class AudioPlayerService with ChangeNotifier {
               duration: item.duration?.inSeconds);
         }
         _duration = item.duration ?? Duration.zero;
+        // A different track starts from the beginning: drop the old track's
+        // position so the progress bar doesn't jump while the new one loads.
+        if (_currentTrack?.id != previousId) {
+          _loadingNewTrack = true;
+          _position = Duration.zero;
+          _bufferedPosition = Duration.zero;
+        }
 
         // New Track Logic
         if (_currentTrack != null) {
@@ -170,6 +207,7 @@ class AudioPlayerService with ChangeNotifier {
         }
       } else {
         _currentTrack = null;
+        _loadingNewTrack = false;
         _duration = Duration.zero;
         _position = Duration.zero;
         _bufferedPosition = Duration.zero;
@@ -179,21 +217,33 @@ class AudioPlayerService with ChangeNotifier {
 
     // Listen to Queue
     _handler.queue.listen((items) {
-      _queue = items.map((item) {
-        if (item.extras != null && item.extras!.containsKey('track')) {
-          return Track.fromJson(
-              Map<String, dynamic>.from(item.extras!['track']));
-        }
-        return Track(
-            id: item.id, title: item.title, artist: item.artist ?? 'Unknown');
-      }).toList();
+      _autoplayStartIndex = null;
+      _queue = [
+        for (var i = 0; i < items.length; i++)
+          () {
+            final item = items[i];
+            // The handler flags tracks that autoplay added.
+            if (_autoplayStartIndex == null &&
+                item.extras?['autoplay'] == true) {
+              _autoplayStartIndex = i;
+            }
+            if (item.extras != null && item.extras!.containsKey('track')) {
+              return Track.fromJson(
+                  Map<String, dynamic>.from(item.extras!['track']));
+            }
+            return Track(
+                id: item.id,
+                title: item.title,
+                artist: item.artist ?? 'Unknown');
+          }(),
+      ];
       notifyListeners();
     });
 
     // Throttle position updates to 200ms to reduce bridge pressure on Windows
     DateTime _lastNotify = DateTime.now();
     AudioService.position.listen((pos) {
-      _position = pos;
+      _position = _loadingNewTrack ? Duration.zero : pos;
       _updateCurrentLyric();
 
       // Last.fm Scrobble Logic
@@ -225,7 +275,32 @@ class AudioPlayerService with ChangeNotifier {
   // Controls
 
   Future<void> playTrack(Track track) async {
+    _radioSeed = null;
+    _autoplaySeed = track;
     await _handler.setRequestQueue([track]);
+  }
+
+  /// Plays [seed] and keeps adding similar songs after it (a "song radio").
+  /// Returns how many songs are queued after it; 0 means none were found.
+  Future<int> startRadio(Track seed) async {
+    _radioSeed = seed;
+    _autoplaySeed = seed;
+    notifyListeners();
+    final queued = await _handler.startRadio(seed);
+    if (queued == 0) {
+      // Nothing found: don't leave the radio showing as active.
+      _radioSeed = null;
+      _handler.stopRadio();
+      notifyListeners();
+    }
+    return queued;
+  }
+
+  /// Turns the radio off. What is already in the queue stays.
+  void stopRadio() {
+    _radioSeed = null;
+    _handler.stopRadio();
+    notifyListeners();
   }
 
   Future<void> playFromQueue(int index) async {
@@ -234,15 +309,33 @@ class AudioPlayerService with ChangeNotifier {
   }
 
   Future<void> playAll(List<Track> tracks, {int startIndex = 0}) async {
+    _radioSeed = null;
+    if (startIndex >= 0 && startIndex < tracks.length) {
+      _autoplaySeed = tracks[startIndex];
+    }
     await _handler.setRequestQueue(tracks, pendingIndex: startIndex);
   }
 
   Future<void> addToQueue(Track track) async {
+    // On an empty queue this starts a new one.
+    if (_queue.isEmpty) {
+      _radioSeed = null;
+      _autoplaySeed = track;
+    }
     await _handler.addTrackToQueue(track);
   }
 
+  /// "Clear queue": the song that is playing stays and keeps playing; every
+  /// other track is removed.
+  void clearQueueKeepCurrent() => _handler.clearQueueKeepCurrent();
+
   // ... (Other queue methods similarly simplified or proxied)
+
+  /// Stops playback and empties the queue (used when the mini player is
+  /// dismissed).
   void clearQueue() {
+    _radioSeed = null;
+    _autoplaySeed = null;
     _handler.stop();
     _handler.setRequestQueue([]);
   }
@@ -294,6 +387,11 @@ class AudioPlayerService with ChangeNotifier {
   }
 
   Future<void> playNext(Track track) async {
+    // On an empty queue this starts a new one.
+    if (_queue.isEmpty) {
+      _radioSeed = null;
+      _autoplaySeed = track;
+    }
     await _handler.insertNext(track);
   }
 

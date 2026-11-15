@@ -49,6 +49,9 @@ class TrackResolver {
     _box = await Hive.openBox(_boxName);
   }
 
+  /// The addon searches go to (for log messages).
+  String? get activeAddonId => _addons.activeAddonId;
+
   String _cacheKey(RecTrack rec, String? addonId) => '${addonId ?? 'none'}|${rec.key}';
 
   /// Resolves one track. Returns null when no good match exists or the search

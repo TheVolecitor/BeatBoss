@@ -12,6 +12,7 @@ import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/models/models.dart';
 import '../../core/utils/app_toast.dart';
+import '../queue/queue_widgets.dart';
 
 /// Reusable Track List Tile - used across search, library, favourites
 class TrackListTile extends StatelessWidget {
@@ -170,6 +171,8 @@ class TrackListTile extends StatelessWidget {
                     value: 'play_next', child: Text('Play Next')),
                 const PopupMenuItem(
                     value: 'add_queue', child: Text('Add to Queue')),
+                const PopupMenuItem(
+                    value: 'start_radio', child: Text('Start Radio')),
                 PopupMenuItem(
                     value: localLibrary.isFavourite(track.id) ? 'unlike' : 'like',
                     child: Text(localLibrary.isFavourite(track.id) ? 'Unlike (Remove)' : 'Like')),
@@ -299,6 +302,9 @@ class TrackListTile extends StatelessWidget {
       case 'play_next':
         player.playNext(track);
         AppToast.show(context, 'Will play "${track.title}" next');
+        break;
+      case 'start_radio':
+        startRadioWithFeedback(context, player, track);
         break;
       case 'like':
       case 'unlike':
