@@ -36,6 +36,8 @@ class SettingsService extends ChangeNotifier {
 
   // New settings
   static const String _keyUseLastFmRecommendations = 'use_lastfm_recs';
+  static const String _keyRecProvider = 'rec_provider';
+  static const String _keyUseAddonCatalogRecs = 'use_addon_catalog_recs';
   static const String _keyEnablePrefetch = 'enable_prefetch';
   static const String _keyPrefetchDuration = 'prefetch_duration';
   static const String _keyCrossfadeDuration = 'crossfade_duration';
@@ -361,6 +363,22 @@ class SettingsService extends ChangeNotifier {
   bool get useLastFmRecommendations => _box.get(_keyUseLastFmRecommendations, defaultValue: false);
   Future<void> setUseLastFmRecommendations(bool value) async {
     await _box.put(_keyUseLastFmRecommendations, value);
+    notifyListeners();
+  }
+
+  /// Which recommendation source is active (see `RecommendationProvider.id`).
+  String get recProviderId => _box.get(_keyRecProvider, defaultValue: 'lastfm');
+  Future<void> setRecProviderId(String value) async {
+    await _box.put(_keyRecProvider, value);
+    notifyListeners();
+  }
+
+  /// Show the active addon's own catalog (tracks, albums, playlists) on the
+  /// home screen. Off means the addon isn't asked for a catalog at all.
+  bool get useAddonCatalogRecommendations =>
+      _box.get(_keyUseAddonCatalogRecs, defaultValue: true);
+  Future<void> setUseAddonCatalogRecommendations(bool value) async {
+    await _box.put(_keyUseAddonCatalogRecs, value);
     notifyListeners();
   }
 

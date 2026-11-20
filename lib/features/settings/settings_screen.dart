@@ -8,6 +8,7 @@ import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/services/stream_cache_service.dart';
 import '../../core/services/last_fm_service.dart';
+import '../../core/recommendations/recommendation_service.dart';
 import '../addons/addons_screen.dart';
 
 /// Settings Screen - theme toggle, download management, cache clearing
@@ -210,9 +211,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _LastFmTile(isDark: isDark),
                       ListTile(
                         leading: const Icon(Icons.recommend_outlined),
-                        title: const Text('Last.fm Recommendations'),
-                        subtitle:
-                            const Text('Use Last.fm for home screen tracks'),
+                        title: const Text('Personal recommendations'),
+                        subtitle: const Text(
+                            'Uses your Last.fm username to fetch recommendations for the home screen'),
                         trailing: Switch(
                           value: settings.useLastFmRecommendations,
                           onChanged: (val) =>
@@ -220,6 +221,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           activeThumbColor: AppTheme.primaryGreen,
                         ),
                       ),
+                      ListTile(
+                        leading: const Icon(Icons.extension_outlined),
+                        title: const Text('Addon recommendations'),
+                        subtitle: const Text(
+                            'Show the featured tracks, albums and playlists from your addon on the home screen'),
+                        trailing: Switch(
+                          value: settings.useAddonCatalogRecommendations,
+                          onChanged: (val) =>
+                              settings.setUseAddonCatalogRecommendations(val),
+                          activeThumbColor: AppTheme.primaryGreen,
+                        ),
+                      ),
+                      Builder(builder: (context) {
+                        final providers =
+                            context.read<RecommendationService>().providers;
+                        final selected = providers.any(
+                                (p) => p.id == settings.recProviderId)
+                            ? settings.recProviderId
+                            : providers.first.id;
+                        return ListTile(
+                          leading: const Icon(Icons.hub_outlined),
+                          title: const Text('Recommendation source'),
+                          trailing: DropdownButton<String>(
+                            value: selected,
+                            underline: const SizedBox.shrink(),
+                            items: [
+                              for (final p in providers)
+                                DropdownMenuItem(
+                                  value: p.id,
+                                  child: Text(p.displayName),
+                                ),
+                            ],
+                            onChanged: (id) {
+                              if (id != null) settings.setRecProviderId(id);
+                            },
+                          ),
+                        );
+                      }),
                     ],
                   ),
 
