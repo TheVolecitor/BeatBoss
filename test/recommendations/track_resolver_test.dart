@@ -43,6 +43,19 @@ void main() {
     test('a title with a trailing version label still matches', () {
       expect(scoreMatch(rec, 'Song Radio Edit', 'Artist'),
           greaterThanOrEqualTo(kMatchThreshold));
+      expect(scoreMatch(rec, 'Song (Live)', 'Artist'),
+          greaterThanOrEqualTo(kMatchThreshold));
+    });
+
+    test('an arbitrary title extension is rejected', () {
+      expect(scoreMatch(rec, 'Song Two', 'Artist'), lessThan(kMatchThreshold));
+      expect(scoreMatch(rec, 'Song Part 2', 'Artist'), lessThan(kMatchThreshold));
+    });
+
+    test('an artist substring is not treated as an artist match', () {
+      const queenRec = RecTrack(title: 'Somebody to Love', artist: 'Queen');
+      expect(scoreMatch(queenRec, 'Somebody to Love', 'Queensryche'),
+          lessThan(kMatchThreshold));
     });
 
     test('empty candidate fields score zero', () {

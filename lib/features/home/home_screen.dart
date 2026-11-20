@@ -51,8 +51,11 @@ class _HomeScreenState extends State<HomeScreen>
   late final LastFmService _lastFmService;
   late final SettingsService _settingsService;
   late final RecommendationService _recService;
+  late final AddonService _addonService;
+  String? _lastActiveAddonId;
   bool _couldRecommend = false;
   bool _couldUseCatalog = true;
+  bool _pendingReload = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -63,15 +66,18 @@ class _HomeScreenState extends State<HomeScreen>
     _lastFmService = context.read<LastFmService>();
     _settingsService = context.read<SettingsService>();
     _recService = context.read<RecommendationService>();
+    _addonService = context.read<AddonService>();
+    _lastActiveAddonId = _addonService.activeAddonId;
 
     // Show the cached shelf immediately, before any network call.
     _couldRecommend = _recService.canRecommend;
     _couldUseCatalog = _settingsService.useAddonCatalogRecommendations;
     _applyShelf(_recService.cachedRecommendedShelf, notify: false);
 
-    // Refetch when Last.fm login or the recommendations setting changes.
+    // Refetch when Last.fm login, the recommendations setting, or active addon changes.
     _lastFmService.addListener(_onSourceChanged);
     _settingsService.addListener(_onSourceChanged);
+    _addonService.addListener(_onAddonChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchRecommendations());
   }
@@ -80,8 +86,29 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _lastFmService.removeListener(_onSourceChanged);
     _settingsService.removeListener(_onSourceChanged);
+    _addonService.removeListener(_onAddonChanged);
     _resolveSub?.cancel();
     super.dispose();
+  }
+
+  void _onAddonChanged() {
+    if (!mounted) return;
+    final currentAddonId = _addonService.activeAddonId;
+    if (currentAddonId == _lastActiveAddonId) return;
+    _lastActiveAddonId = currentAddonId;
+
+    // Active addon changed: re-resolve current shelf against the new addon,
+    // and refresh addon catalog.
+    if (_recShelf != null) {
+      _applyShelf(_recShelf, forceResolve: true);
+    }
+    if (_settingsService.useAddonCatalogRecommendations) {
+      if (!_loadingRecommendations) {
+        _fetchRecommendations();
+      } else {
+        _pendingReload = true;
+      }
+    }
   }
 
   void _onSourceChanged() {
@@ -106,13 +133,21 @@ class _HomeScreenState extends State<HomeScreen>
         }
       });
     }
-    if (turnedOn && !_loadingRecommendations) _fetchRecommendations();
+    if (turnedOn) {
+      if (!_loadingRecommendations) {
+        _fetchRecommendations();
+      } else {
+        _pendingReload = true;
+      }
+    }
   }
 
   /// Shows [shelf] and starts resolving its tracks to playable ones. Does
-  /// nothing when the same shelf is already shown.
-  void _applyShelf(RecShelf? shelf, {bool notify = true}) {
-    if (shelf?.fetchedAt == _recShelf?.fetchedAt && shelf?.id == _recShelf?.id) {
+  /// nothing when the same shelf is already shown unless [forceResolve] is true.
+  void _applyShelf(RecShelf? shelf, {bool notify = true, bool forceResolve = false}) {
+    if (!forceResolve &&
+        shelf?.fetchedAt == _recShelf?.fetchedAt &&
+        shelf?.id == _recShelf?.id) {
       return;
     }
     _resolveSub?.cancel();
@@ -167,15 +202,32 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
 
       setState(() {
-        _catalogTracks = catalog?.tracks.map(trackFromAddon).toList() ?? [];
-        _recommendedAlbums = catalog?.albums ?? [];
-        _recommendedPlaylists = catalog?.playlists ?? [];
+        if (_settingsService.useAddonCatalogRecommendations) {
+          _catalogTracks = catalog?.tracks.map(trackFromAddon).toList() ?? [];
+          _recommendedAlbums = catalog?.albums ?? [];
+          _recommendedPlaylists = catalog?.playlists ?? [];
+        } else {
+          _catalogTracks = [];
+          _recommendedAlbums = [];
+          _recommendedPlaylists = [];
+        }
         _loadingRecommendations = false;
       });
-      _applyShelf(shelf);
+      if (_recService.canRecommend) {
+        _applyShelf(shelf);
+      } else {
+        _applyShelf(null);
+      }
     } catch (e) {
       print('Error fetching recommendations: $e');
       if (mounted) setState(() => _loadingRecommendations = false);
+    } finally {
+      if (mounted) {
+        if (_pendingReload) {
+          _pendingReload = false;
+          _fetchRecommendations();
+        }
+      }
     }
   }
 

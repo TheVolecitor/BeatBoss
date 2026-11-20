@@ -22,26 +22,59 @@ String normalizeForMatch(String s) {
   return r.replaceAll(_spaces, ' ').trim();
 }
 
-/// 1.0 for equal. 0.8 when the shorter string is a word-boundary prefix of
-/// the longer one ("song" vs "song radio edit", "artist" vs "artist other").
-/// 0.4 when it only appears elsewhere inside it ("song" vs "another song"),
-/// which is usually a different track. Otherwise 0.0.
-double _similarity(String a, String b) {
+final _versionLabel = RegExp(
+  r'^(radio edit|edit|remix|mix|extended|acoustic|version|deluxe|instrumental|mono|stereo|live|clean|explicit|dub|session|demo|bonus|re recorded|orchestral)(\b|\s|$)',
+  caseSensitive: false,
+);
+
+final _artistSeparators = RegExp(
+  r'\s*(?:,|&|\/|;|\bfeat\.?|\bft\.?|\band\b|\bwith\b|\bx\b|\bvs\.?)\s*',
+  caseSensitive: false,
+);
+
+/// 1.0 for equal. 0.8 when the shorter title is a prefix followed by a recognized
+/// version label (e.g. "Song" vs "Song (Radio Edit)" or "Song Radio Edit").
+double _titleSimilarity(String a, String b) {
   if (a.isEmpty || b.isEmpty) return 0.0;
   if (a == b) return 1.0;
   final shorter = a.length <= b.length ? a : b;
   final longer = identical(shorter, a) ? b : a;
-  if (longer.startsWith('$shorter ')) return 0.8;
-  if (longer.contains(shorter)) return 0.4;
+  if (longer.startsWith('$shorter ')) {
+    final remainder = longer.substring(shorter.length + 1).trim();
+    if (_versionLabel.hasMatch(remainder)) return 0.8;
+  }
+  return 0.0;
+}
+
+/// 1.0 for equal. 0.8 when complete artist tokens match across lists
+/// (e.g. "Queen" matching "Queen, David Bowie"). Character substrings do not match.
+double _artistSimilarity(String a, String b) {
+  if (a.isEmpty || b.isEmpty) return 0.0;
+  if (a == b) return 1.0;
+  final artistsA = a
+      .split(_artistSeparators)
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
+  final artistsB = b
+      .split(_artistSeparators)
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
+  for (final partA in artistsA) {
+    for (final partB in artistsB) {
+      if (partA == partB) return 0.8;
+    }
+  }
   return 0.0;
 }
 
 /// Scores how well a candidate (an addon search hit) matches [rec]:
 /// 0.6 x title similarity + 0.4 x artist similarity.
 double scoreMatch(RecTrack rec, String candidateTitle, String candidateArtist) {
-  final title =
-      _similarity(normalizeForMatch(rec.title), normalizeForMatch(candidateTitle));
-  final artist = _similarity(
+  final title = _titleSimilarity(
+      normalizeForMatch(rec.title), normalizeForMatch(candidateTitle));
+  final artist = _artistSimilarity(
       normalizeForMatch(rec.artist), normalizeForMatch(candidateArtist));
   return 0.6 * title + 0.4 * artist;
 }

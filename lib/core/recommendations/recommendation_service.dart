@@ -24,6 +24,7 @@ class RecommendationService extends ChangeNotifier {
   final List<RecommendationProvider> _providers;
   final TrackResolver resolver;
   Box? _box;
+  int _shelfGeneration = 0;
 
   RecommendationService({
     required SettingsService settings,
@@ -83,16 +84,25 @@ class RecommendationService extends ChangeNotifier {
       return cached;
     }
 
+    final generation = _shelfGeneration;
+    RecShelf fresh;
     try {
-      final fresh = await build();
-      if (fresh.isEmpty) return cached ?? fresh;
-      await _box?.put(_boxKey(id), jsonEncode(fresh.toJson()));
-      notifyListeners();
-      return fresh;
+      fresh = await build();
     } catch (e) {
-      print('Recommendation shelf "$id" failed: $e');
+      print('Recommendation shelf "$id" build failed: $e');
       return cached;
     }
+
+    if (fresh.isEmpty) return cached ?? fresh;
+    if (generation != _shelfGeneration) return null;
+
+    try {
+      await _box?.put(_boxKey(id), jsonEncode(fresh.toJson()));
+    } catch (e) {
+      print('Recommendation shelf "$id" cache write failed: $e');
+    }
+    notifyListeners();
+    return fresh;
   }
 
   /// The user's personal recommendations (up to 50 tracks). Null when
@@ -122,6 +132,7 @@ class RecommendationService extends ChangeNotifier {
   /// Removes every cached shelf (call on logout so personal data doesn't
   /// outlive the session).
   Future<void> clearShelves() async {
+    _shelfGeneration++;
     await _box?.clear();
     notifyListeners();
   }

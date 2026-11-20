@@ -49,15 +49,16 @@ class TrackResolver {
     _box = await Hive.openBox(_boxName);
   }
 
-  String _cacheKey(RecTrack rec) => '${_addons.activeAddonId}|${rec.key}';
+  String _cacheKey(RecTrack rec, String? addonId) => '${addonId ?? 'none'}|${rec.key}';
 
   /// Resolves one track. Returns null when no good match exists or the search
   /// failed. Failures are not cached; "no match" results are.
   Future<Track?> resolve(RecTrack rec) {
-    final key = _cacheKey(rec);
+    final addonId = _addons.activeAddonId;
+    final key = _cacheKey(rec, addonId);
     return _inflight.putIfAbsent(key, () async {
       try {
-        return await _resolveUncached(rec, key);
+        return await _resolveUncached(rec, key, addonId);
       } finally {
         _inflight.remove(key);
       }
@@ -92,13 +93,17 @@ class TrackResolver {
     return controller.stream;
   }
 
-  Future<Track?> _resolveUncached(RecTrack rec, String key) async {
+  Future<Track?> _resolveUncached(RecTrack rec, String key, String? addonId) async {
     final cached = _readCache(key);
     if (cached != null) return cached.track;
 
     await _acquire();
     try {
-      final result = await _addons.search('${rec.title} ${rec.artist}', limit: 5);
+      final result = await _addons.search(
+        '${rec.title} ${rec.artist}',
+        limit: 5,
+        addonId: addonId,
+      );
       // null means no active addon or a failed request: don't cache that.
       if (result == null) return null;
 
