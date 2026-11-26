@@ -348,6 +348,7 @@ class _AppShellState extends State<AppShell> {
     return [
       _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home', isDark),
       _buildNavItem(1, Icons.library_music_outlined, Icons.library_music, 'Library', isDark),
+      _buildNavItem(3, Icons.search, Icons.search, 'Search', isDark),
 
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -367,8 +368,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildNavItem(int index, IconData icon, IconData activeIcon,
       String label, bool isDark) {
-    // For search (index 3), we visually highlight Home (index 0)
-    final isSelected = _selectedIndex == index || (_selectedIndex == 3 && index == 0);
+    final isSelected = _selectedIndex == index;
 
     return InkWell(
       onTap: () => _onNavTap(index),
@@ -489,7 +489,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget? _buildBottomNav(bool isDark) {
-    final activeIndex = _selectedIndex > 2 ? 0 : _selectedIndex;
+    final activeIndex = _selectedIndex > 3 ? 0 : _selectedIndex;
     // Keep the nav items clear of the system navigation bar (gesture pill or
     // 3-button bar) when the app is drawn edge-to-edge.
     final bottomInset = MediaQuery.of(context).viewPadding.bottom;
@@ -514,6 +514,7 @@ class _AppShellState extends State<AppShell> {
               children: [
                 _buildModernNavItem(0, Icons.home_rounded, Icons.home_rounded, 'Home', activeIndex == 0, isDark),
                 _buildModernNavItem(1, Icons.library_music_rounded, Icons.library_music_rounded, 'Library', activeIndex == 1, isDark),
+                _buildModernNavItem(3, Icons.search_rounded, Icons.search_rounded, 'Search', activeIndex == 3, isDark),
                 _buildModernNavItem(2, Icons.settings_rounded, Icons.settings_rounded, 'Settings', activeIndex == 2, isDark),
               ],
             ),
