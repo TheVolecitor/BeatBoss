@@ -152,6 +152,32 @@ class StreamCacheService extends ChangeNotifier {
     return path;
   }
 
+  /// Every cached song, most recently played first. Each can be played
+  /// through the normal player: it finds the file in the cache.
+  List<Track> get cachedTracks {
+    final entries = _index.values.toList()
+      ..sort((a, b) => b.lastAccess.compareTo(a.lastAccess));
+    return [
+      for (final e in entries)
+        Track(
+          id: e.trackId,
+          title: e.title,
+          artist: e.artist,
+          albumTitle: e.albumTitle,
+          albumCover: e.albumCover,
+          duration: e.duration,
+          addonId: e.addonId,
+          addonTrackId: e.addonTrackId,
+        ),
+    ];
+  }
+
+  /// Removes one song from the cache and deletes its file.
+  void remove(Track track) {
+    _removeEntry(keyFor(track));
+    notifyListeners();
+  }
+
   /// Forgets a cached file that failed to play.
   void invalidate(Track track) {
     _removeEntry(keyFor(track));
@@ -275,6 +301,8 @@ class StreamCacheService extends ChangeNotifier {
       duration: track.duration,
       format: format,
       quality: quality,
+      albumTitle: track.albumTitle,
+      albumCover: track.albumCover,
     );
     _evictToFit(protect: key);
     await _saveIndex();

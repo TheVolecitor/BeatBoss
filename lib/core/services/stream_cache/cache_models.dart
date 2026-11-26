@@ -16,6 +16,8 @@ class StreamCacheEntry {
   final int? duration; // as reported by the addon (seconds or ms)
   final String? format; // as reported by the addon
   final String? quality; // as reported by the addon
+  final String? albumTitle;
+  final String? albumCover;
 
   const StreamCacheEntry({
     required this.key,
@@ -31,6 +33,8 @@ class StreamCacheEntry {
     this.duration,
     this.format,
     this.quality,
+    this.albumTitle,
+    this.albumCover,
   });
 
   StreamCacheEntry touched(int now) => StreamCacheEntry(
@@ -47,6 +51,8 @@ class StreamCacheEntry {
         duration: duration,
         format: format,
         quality: quality,
+        albumTitle: albumTitle,
+        albumCover: albumCover,
       );
 
   factory StreamCacheEntry.fromJson(Map<String, dynamic> json) {
@@ -64,6 +70,8 @@ class StreamCacheEntry {
       duration: json['duration'] as int?,
       format: json['format'] as String?,
       quality: json['quality'] as String?,
+      albumTitle: json['albumTitle'] as String?,
+      albumCover: json['albumCover'] as String?,
     );
   }
 
@@ -81,6 +89,8 @@ class StreamCacheEntry {
         'duration': duration,
         'format': format,
         'quality': quality,
+        'albumTitle': albumTitle,
+        'albumCover': albumCover,
       };
 }
 

@@ -13,6 +13,8 @@ import '../shared/batch_download_dialog.dart';
 import '../../core/utils/app_toast.dart';
 import '../favourites/favourites_screen.dart';
 import '../downloads/downloads_screen.dart';
+import '../../core/services/stream_cache_service.dart';
+import 'cache_screen.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -147,11 +149,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final isDark = settings.isDarkMode;
     final addonService = context.watch<AddonService>();
     final hasAddonLibrary = addonService.supportsLibrary;
+    final hasCache = context.watch<StreamCacheService>().isSupported;
 
     return _selectedLibrary != null
         ? _buildLibraryDetail(isDark)
         : DefaultTabController(
-            length: hasAddonLibrary ? 4 : 3,
+            length: (hasAddonLibrary ? 4 : 3) + (hasCache ? 1 : 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -184,6 +187,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       if (hasAddonLibrary) const Tab(text: 'Cloud Library'),
                       const Tab(text: 'Local Library'),
                       const Tab(text: 'Downloads'),
+                      if (hasCache) const Tab(text: 'Cache'),
                     ],
                   ),
                   Expanded(
@@ -193,6 +197,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         if (hasAddonLibrary) _buildAddonLibraryList(isDark),
                         _buildLocalLibraryList(isDark),
                         const DownloadsScreen(),
+                        if (hasCache) const CacheScreen(),
                       ],
                     ),
                   ),

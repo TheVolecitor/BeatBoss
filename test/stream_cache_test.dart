@@ -416,6 +416,28 @@ void main() {
           isNull);
     });
 
+    test('cachedTracks lists playable tracks, newest played first', () async {
+      final a = track('a');
+      final b = track('b');
+      await cacheTrack(a);
+      await cacheTrack(b);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      cache.lookup(a); // playing a again moves it to the front
+      cache.clearPlaying();
+
+      final listed = cache.cachedTracks;
+
+      expect(listed.map((t) => t.id), ['a', 'b']);
+      expect(listed.first.addonId, a.addonId);
+      expect(StreamCacheService.keyFor(listed.first), StreamCacheService.keyFor(a));
+      expect(cache.lookup(listed.first), isNotNull,
+          reason: 'the listed track finds its file in the cache');
+      cache.clearPlaying();
+
+      cache.remove(listed.first);
+      expect(cache.cachedTracks.map((t) => t.id), ['b']);
+    });
+
     test('invalidate and clear remove files', () async {
       final a = track('a');
       final b = track('b');

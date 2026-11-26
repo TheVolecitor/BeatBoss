@@ -22,6 +22,10 @@ class StreamCacheService extends ChangeNotifier {
 
   String? lookup(Track track) => null;
 
+  List<Track> get cachedTracks => const [];
+
+  void remove(Track track) {}
+
   void invalidate(Track track) {}
 
   void clearPlaying() {}
