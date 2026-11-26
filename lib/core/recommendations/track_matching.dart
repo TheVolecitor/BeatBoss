@@ -126,25 +126,24 @@ double _titleSimilarity(String a, String b) {
   return 0.0;
 }
 
-/// 1.0 for equal. 0.8 when complete artist tokens match across lists
-/// (e.g. "Queen" matching "Queen, David Bowie"). Character substrings do not match.
+/// 1.0 for equal. 0.8 when complete artist names match across credits
+/// (e.g. "Queen" matching "Queen, David Bowie"). Character substrings do not
+/// match. Takes the raw credits: the separators are punctuation, which
+/// [normalizeForMatch] would strip.
 double _artistSimilarity(String a, String b) {
-  if (a.isEmpty || b.isEmpty) return 0.0;
-  if (a == b) return 1.0;
-  final artistsA = a
+  final na = normalizeForMatch(a);
+  final nb = normalizeForMatch(b);
+  if (na.isEmpty || nb.isEmpty) return 0.0;
+  if (na == nb) return 1.0;
+  List<String> names(String credit) => credit
+      .toLowerCase()
       .split(_artistSeparators)
-      .map((s) => s.trim())
+      .map(normalizeForMatch)
       .where((s) => s.isNotEmpty)
       .toList();
-  final artistsB = b
-      .split(_artistSeparators)
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
-  for (final partA in artistsA) {
-    for (final partB in artistsB) {
-      if (partA == partB) return 0.8;
-    }
+  final namesB = names(b);
+  for (final partA in names(a)) {
+    if (namesB.contains(partA)) return 0.8;
   }
   return 0.0;
 }
@@ -154,7 +153,6 @@ double _artistSimilarity(String a, String b) {
 double scoreMatch(RecTrack rec, String candidateTitle, String candidateArtist) {
   final title = _titleSimilarity(
       normalizeForMatch(rec.title), normalizeForMatch(candidateTitle));
-  final artist = _artistSimilarity(
-      normalizeForMatch(rec.artist), normalizeForMatch(candidateArtist));
+  final artist = _artistSimilarity(rec.artist, candidateArtist);
   return 0.6 * title + 0.4 * artist;
 }
