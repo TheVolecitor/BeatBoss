@@ -232,7 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           leading: const Icon(Icons.hub_outlined),
                           title: const Text('Recommendation source'),
                           subtitle: const Text(
-                              'Where recommendations, autoplay and radio come from. Off turns them all off.'),
+                              'Where home shelves, autoplay and radio come from. Titles and artists of songs you play are sent to it to find similar music. Off turns them all off.'),
                           trailing: DropdownButton<String>(
                             value: selected,
                             underline: const SizedBox.shrink(),

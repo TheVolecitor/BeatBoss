@@ -19,6 +19,10 @@ class RecommendationService extends ChangeNotifier {
 
   /// Id of the "recommended for you" shelf.
   static const recommendedShelfId = 'station_recommended';
+  static const mixShelfId = 'station_mix';
+  static const libraryShelfId = 'station_library';
+  static const topArtistsShelfId = 'top_artists';
+  static const chartsShelfId = 'charts';
 
   final SettingsService _settings;
   final List<RecommendationProvider> _providers;
@@ -109,32 +113,232 @@ class RecommendationService extends ChangeNotifier {
     return fresh;
   }
 
+  /// Builds a track shelf from [fetch] and caches it. [fetch] only runs when
+  /// the cached shelf is missing, stale or [force] is set.
+  Future<RecShelf?> _trackShelf(
+    String id,
+    String title, {
+    String? subtitle,
+    required bool force,
+    int max = 50,
+    required Future<List<RecTrack>> Function() fetch,
+  }) {
+    return loadShelf(
+      id,
+      force: force,
+      build: () async => RecShelf(
+        id: id,
+        title: title,
+        subtitle: subtitle,
+        tracks: _dedupe(await fetch()).take(max).toList(),
+        fetchedAt: DateTime.now(),
+      ),
+    );
+  }
+
   /// The user's personal recommendations (up to 50 tracks). Null when
   /// recommendations are off or the user is not logged in.
   Future<RecShelf?> recommendedShelf({bool force = false}) async {
     if (!canRecommend) return null;
-    final provider = active;
-    return loadShelf(
+    return _trackShelf(
       recommendedShelfId,
+      'Recommended for you',
+      subtitle: 'Picked from your listening',
       force: force,
-      build: () async {
-        final tracks = await provider.station(StationKind.recommended);
-        return RecShelf(
-          id: recommendedShelfId,
-          title: 'Recommended for you',
-          tracks: _dedupe(tracks).take(50).toList(),
-          fetchedAt: DateTime.now(),
-        );
+      fetch: () => active.station(StationKind.recommended),
+    );
+  }
+
+  /// The provider's "mix" station. Needs a login.
+  Future<RecShelf?> mixShelf({bool force = false}) async {
+    if (!canRecommend) return null;
+    return _trackShelf(
+      mixShelfId,
+      'Your mix',
+      subtitle: 'Songs you know and new ones',
+      force: force,
+      fetch: () => active.station(StationKind.mix),
+    );
+  }
+
+  /// The provider's "library" station. Needs a login.
+  Future<RecShelf?> libraryShelf({bool force = false}) async {
+    if (!canRecommend) return null;
+    return _trackShelf(
+      libraryShelfId,
+      'Your library',
+      subtitle: 'Your favourites on repeat',
+      force: force,
+      fetch: () => active.station(StationKind.library),
+    );
+  }
+
+  /// The artists the user listened to most lately (cached like a shelf).
+  Future<RecShelf?> topArtistsShelf({bool force = false}) async {
+    if (!canRecommend) return null;
+    return loadShelf(
+      topArtistsShelfId,
+      force: force,
+      build: () async => RecShelf(
+        id: topArtistsShelfId,
+        title: 'Your top artists',
+        kind: ShelfKind.artists,
+        artists: await active.userTopArtists(period: '3month', limit: 10),
+        fetchedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  /// "<Artist> Mix" shelves for the user's top 3 artists: the artist's top
+  /// tracks interleaved with songs similar to the best one.
+  Future<List<RecShelf>> artistMixShelves({bool force = false}) async {
+    final top = await topArtistsShelf(force: force);
+    if (top == null) return const [];
+    final shelves = await Future.wait(
+      top.artists.take(3).map((a) => artistMixShelf(a.name, force: force)),
+    );
+    return shelves.whereType<RecShelf>().toList();
+  }
+
+  /// The cached artist mixes, without any network call.
+  List<RecShelf> get cachedArtistMixShelves {
+    if (!canRecommend) return const [];
+    final top = cachedShelf(topArtistsShelfId);
+    if (top == null) return const [];
+    return top.artists
+        .take(3)
+        .map((a) => cachedShelf(artistMixShelfId(a.name)))
+        .whereType<RecShelf>()
+        .toList();
+  }
+
+  String artistMixShelfId(String artist) => 'artist_mix:${normalizeKeyPart(artist)}';
+
+  Future<RecShelf?> artistMixShelf(String artist, {bool force = false}) {
+    return _trackShelf(
+      artistMixShelfId(artist),
+      '$artist Mix',
+      subtitle: 'Made from your top artists',
+      force: force,
+      fetch: () async {
+        final top = await topTracksOf(artist, limit: 15);
+        final similar = top.isEmpty
+            ? const <RecTrack>[]
+            : await similarTracksOf(top.first.artist, top.first.title, limit: 15);
+        // Alternate between the artist's own songs and similar ones.
+        final mixed = <RecTrack>[];
+        for (var i = 0; i < top.length || i < similar.length; i++) {
+          if (i < top.length) mixed.add(top[i]);
+          if (i < similar.length) mixed.add(similar[i]);
+        }
+        return mixed;
       },
     );
   }
 
-  /// Tracks similar to [seed], used for autoplay and song radio. Addon names
-  /// are often decorated, so cleaned-up variants are tried when the original
-  /// isn't recognised.
-  Future<List<RecTrack>> similarTo(Track seed, {int limit = 50}) async {
+  String becauseShelfId(Track seed) => 'because:${matchKey(seed.artist, seed.title)}';
+
+  /// Songs similar to [seed], shown as "Because you listened to ...".
+  Future<RecShelf?> becauseYouListened(Track seed, {bool force = false}) async {
+    if (!sourceEnabled) return null;
+    return _trackShelf(
+      becauseShelfId(seed),
+      'Because you listened to ${seed.title}',
+      force: force,
+      max: 20,
+      fetch: () => similarTracksOf(seed.artist, seed.title, limit: 20),
+    );
+  }
+
+  RecShelf? cachedBecause(Track seed) =>
+      sourceEnabled ? cachedShelf(becauseShelfId(seed)) : null;
+
+  String similarArtistsShelfId(String artist) => 'fans:${normalizeKeyPart(artist)}';
+
+  /// "Fans also like <artist>": artists similar to [artist].
+  Future<RecShelf?> similarArtistsShelf(String artist, {bool force = false}) async {
+    if (!sourceEnabled) return null;
+    final id = similarArtistsShelfId(artist);
+    return loadShelf(
+      id,
+      force: force,
+      build: () async => RecShelf(
+        id: id,
+        title: 'Fans also like $artist',
+        kind: ShelfKind.artists,
+        artists: await similarArtistsOf(artist, limit: 20),
+        fetchedAt: DateTime.now(),
+      ),
+    );
+  }
+
+  RecShelf? cachedSimilarArtists(String artist) =>
+      sourceEnabled ? cachedShelf(similarArtistsShelfId(artist)) : null;
+
+  /// What's popular right now. No login needed.
+  Future<RecShelf?> chartsShelf({bool force = false}) async {
+    if (!sourceEnabled) return null;
+    return _trackShelf(
+      chartsShelfId,
+      'Top charts',
+      force: force,
+      max: 30,
+      fetch: () => active.chartTopTracks(limit: 30),
+    );
+  }
+
+  RecShelf? get cachedChartsShelf =>
+      sourceEnabled ? cachedShelf(chartsShelfId) : null;
+
+  /// More chart entries for the mix screen's "Load more".
+  Future<List<RecTrack>> moreCharts(int page) async {
     if (!sourceEnabled) return const [];
-    for (final v in lookupVariants(seed.artist, seed.title)) {
+    return active.chartTopTracks(limit: 30, page: page);
+  }
+
+  String tagShelfId(String tag) => 'tag:${normalizeKeyPart(tag)}';
+
+  /// Top tracks for a genre or mood tag. No login needed.
+  Future<RecShelf?> tagShelf(String tag, {bool force = false}) async {
+    if (!sourceEnabled) return null;
+    return _trackShelf(
+      tagShelfId(tag),
+      'Top $tag',
+      force: force,
+      max: 30,
+      fetch: () => active.tagTopTracks(tag, limit: 30),
+    );
+  }
+
+  RecShelf? cachedTagShelf(String tag) =>
+      sourceEnabled ? cachedShelf(tagShelfId(tag)) : null;
+
+  Future<List<RecTrack>> moreTagTracks(String tag, int page) async {
+    if (!sourceEnabled) return const [];
+    return active.tagTopTracks(tag, limit: 30, page: page);
+  }
+
+  /// The first of [artist]'s top tracks that the active addon can play, for
+  /// starting an artist radio. Null when none of the first few can be found.
+  Future<Track?> firstPlayableTopTrack(String artist) async {
+    final top = await topTracksOf(artist, limit: 6);
+    for (final rec in top) {
+      final track = await resolver.resolve(rec);
+      if (track != null) return track;
+    }
+    return null;
+  }
+
+  /// Tracks similar to [seed], used for autoplay and song radio.
+  Future<List<RecTrack>> similarTo(Track seed, {int limit = 50}) =>
+      similarTracksOf(seed.artist, seed.title, limit: limit);
+
+  /// Tracks similar to a song. Addon names are often decorated, so
+  /// cleaned-up variants are tried when the original isn't recognised.
+  Future<List<RecTrack>> similarTracksOf(String artist, String title,
+      {int limit = 50}) async {
+    if (!sourceEnabled) return const [];
+    for (final v in lookupVariants(artist, title)) {
       final found = await active.similarTracks(v.artist, v.title, limit: limit);
       if (found.isNotEmpty) return found;
     }

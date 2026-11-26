@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -12,7 +11,7 @@ import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/models/models.dart';
 import '../../core/utils/app_toast.dart';
-import '../queue/queue_widgets.dart';
+import 'track_menu.dart';
 
 /// Reusable Track List Tile - used across search, library, favourites
 class TrackListTile extends StatelessWidget {
@@ -22,6 +21,10 @@ class TrackListTile extends StatelessWidget {
   final String? libraryId;
   final VoidCallback? onRemove;
 
+  /// Replaces what tapping the row (or its play button) does when this track
+  /// isn't the current one. By default it plays just this track.
+  final VoidCallback? onPlay;
+
   const TrackListTile({
     super.key,
     required this.track,
@@ -29,6 +32,7 @@ class TrackListTile extends StatelessWidget {
     required this.index,
     this.libraryId,
     this.onRemove,
+    this.onPlay,
     this.removeLabel = 'Remove from Library',
     this.showInfoText = false,
   });
@@ -153,7 +157,7 @@ class TrackListTile extends StatelessWidget {
                 if (isCurrentTrack) {
                   player.togglePlayPause();
                 } else {
-                  player.playSingleTrack(track);
+                  (onPlay ?? () => player.playSingleTrack(track))();
                 }
               },
               tooltip: isPlaying ? 'Pause' : 'Play',
@@ -165,14 +169,7 @@ class TrackListTile extends StatelessWidget {
                   color: isDark ? Colors.white54 : Colors.black45),
               onSelected: (value) => _handleMenuAction(context, value),
               itemBuilder: (context) => [
-                const PopupMenuItem(
-                    value: 'add_library', child: Text('Add to Library')),
-                const PopupMenuItem(
-                    value: 'play_next', child: Text('Play Next')),
-                const PopupMenuItem(
-                    value: 'add_queue', child: Text('Add to Queue')),
-                const PopupMenuItem(
-                    value: 'start_radio', child: Text('Start Radio')),
+                ...trackMenuItems(includeDownload: false),
                 PopupMenuItem(
                     value: localLibrary.isFavourite(track.id) ? 'unlike' : 'like',
                     child: Text(localLibrary.isFavourite(track.id) ? 'Unlike (Remove)' : 'Like')),
@@ -190,7 +187,7 @@ class TrackListTile extends StatelessWidget {
           if (isCurrentTrack) {
             player.togglePlayPause();
           } else {
-            player.playSingleTrack(track);
+            (onPlay ?? () => player.playSingleTrack(track))();
           }
         },
       ),
@@ -288,24 +285,10 @@ class TrackListTile extends StatelessWidget {
   }
 
   void _handleMenuAction(BuildContext context, String action) {
-    final player = context.read<AudioPlayerService>();
+    if (handleTrackMenuAction(context, track, action)) return;
     final localLibrary = context.read<LocalLibraryService>();
 
     switch (action) {
-      case 'add_library':
-        _showLibraryPicker(context);
-        break;
-      case 'add_queue':
-        player.addToQueue(track);
-        AppToast.show(context, 'Added "${track.title}" to queue');
-        break;
-      case 'play_next':
-        player.playNext(track);
-        AppToast.show(context, 'Will play "${track.title}" next');
-        break;
-      case 'start_radio':
-        startRadioWithFeedback(context, player, track);
-        break;
       case 'like':
       case 'unlike':
         localLibrary.toggleFavourite(track).then((_) {
@@ -322,101 +305,6 @@ class TrackListTile extends StatelessWidget {
         onRemove?.call();
         break;
     }
-  }
-
-  void _showLibraryPicker(BuildContext context) async {
-    final addonService = context.read<AddonService>();
-    final localService = context.read<LocalLibraryService>();
-
-    final cloudLibraries = await addonService.getLibraries();
-    final localLibraries = localService.getLibraries();
-
-    if (!context.mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      builder: (sheetContext) => Container(
-        padding: EdgeInsets.fromLTRB(
-            20, 20, 20, 20 + MediaQuery.of(sheetContext).viewPadding.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Add to Library',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 15),
-            if (cloudLibraries.isEmpty && localLibraries.isEmpty)
-              const Text('No libraries found. Create one first!')
-            else
-              Expanded(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    if (localLibraries.isNotEmpty) ...[
-                      const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8.0),
-                          child: Text('LOCAL LIBRARIES',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey))),
-                      ...localLibraries.map((lib) => ListTile(
-                            leading: const Icon(Icons.folder,
-                                color: AppTheme.primaryGreen),
-                            title: Text(lib.name),
-                            onTap: () async {
-                              final success = await localService
-                                  .addTrackToLibrary(lib.id, track);
-                              if (context.mounted) {
-                                Navigator.pop(context);
-                                AppToast.show(
-                                  context,
-                                  success
-                                      ? 'Added to ${lib.name}'
-                                      : 'Failed to add',
-                                  isError: !success,
-                                );
-                              }
-                            },
-                          )),
-                    ],
-                    if (cloudLibraries.isNotEmpty) ...[
-                      const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8.0),
-                          child: Text('CLOUD LIBRARIES',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey))),
-                      ...cloudLibraries.map((lib) => ListTile(
-                            leading: const Icon(Icons.cloud,
-                                color: AppTheme.primaryGreen),
-                            title: Text(lib.name),
-                            onTap: () async {
-                              final success = await addonService
-                                  .addTracksToLibrary(lib.id, [track]);
-                              if (context.mounted) {
-                                Navigator.pop(context);
-                                AppToast.show(
-                                  context,
-                                  success
-                                      ? 'Added to ${lib.name}'
-                                      : 'Failed to add',
-                                  isError: !success,
-                                );
-                              }
-                            },
-                          )),
-                    ],
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

@@ -316,6 +316,14 @@ class AudioPlayerService with ChangeNotifier {
     await _handler.setRequestQueue(tracks, pendingIndex: startIndex);
   }
 
+  /// Plays [tracks] in a random order and leaves shuffle switched on.
+  Future<void> playAllShuffled(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    final order = List.of(tracks)..shuffle();
+    await playAll(order);
+    if (!_shuffleEnabled) await toggleShuffle();
+  }
+
   Future<void> addToQueue(Track track) async {
     // On an empty queue this starts a new one.
     if (_queue.isEmpty) {

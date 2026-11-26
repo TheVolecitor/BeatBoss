@@ -5,6 +5,7 @@ class HorizontalScrollWrapper extends StatefulWidget {
   final double itemSpacing;
   final double listHeight;
   final String title;
+  final String? subtitle;
   final TextStyle? titleStyle;
   final Widget? trailing;
   final Widget Function(BuildContext context, ScrollController controller) builder;
@@ -15,6 +16,7 @@ class HorizontalScrollWrapper extends StatefulWidget {
     required this.itemSpacing,
     required this.listHeight,
     required this.title,
+    this.subtitle,
     this.titleStyle,
     this.trailing,
     required this.builder,
@@ -102,9 +104,24 @@ class _HorizontalScrollWrapperState extends State<HorizontalScrollWrapper> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(
-                    widget.title,
-                    style: widget.titleStyle ?? const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: widget.titleStyle ?? const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                      ),
+                      if (widget.subtitle != null)
+                        Text(
+                          widget.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 if (isDesktop && _showLeft) _buildButton(Icons.chevron_left, () => _scroll(false)),
