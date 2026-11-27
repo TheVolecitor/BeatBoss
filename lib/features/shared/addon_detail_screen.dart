@@ -522,7 +522,19 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
     } else if (_error != null) {
       return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
     } else if (_tracks.isEmpty) {
-      return const Center(child: Text('No tracks found', style: TextStyle(color: Colors.white54)));
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: Text('No tracks found',
+                  style: TextStyle(color: Colors.white54)),
+            ),
+          ),
+          _buildFans(),
+        ],
+      );
     }
     
     return Padding(

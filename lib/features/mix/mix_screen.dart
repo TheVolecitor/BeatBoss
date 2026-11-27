@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
@@ -38,8 +39,15 @@ class _MixScreenState extends State<MixScreen> {
   @override
   void initState() {
     super.initState();
-    _resolved = ResolvedShelf(context.read<RecommendationService>().resolver)
-      ..setShelf(widget.shelf);
+    _resolved = ResolvedShelf(
+      context.read<RecommendationService>().resolver,
+      eagerResolve: false,
+      onCoverResolved: (url) {
+        try {
+          CachedNetworkImageProvider(url).resolve(ImageConfiguration.empty);
+        } catch (_) {}
+      },
+    )..setShelf(widget.shelf);
   }
 
   VoidCallback? _mixTailListener;
@@ -52,6 +60,30 @@ class _MixScreenState extends State<MixScreen> {
     }
     _resolved.dispose();
     super.dispose();
+  }
+
+  Future<void> _playIndex(int index) async {
+    if (_starting) return;
+    setState(() => _starting = true);
+    final player = context.read<AudioPlayerService>();
+    try {
+      final track = await _resolved.resolveAt(index);
+      if (!mounted) return;
+      if (track == null) {
+        AppToast.show(context, 'Track not available in active addon',
+            isError: true);
+        return;
+      }
+      final tracks = _resolved.playable;
+      final start = tracks.indexWhere((t) => t.id == track.id);
+      if (start >= 0 && tracks.length > 1) {
+        await player.playAll(tracks, startIndex: start);
+      } else {
+        await player.playSingleTrack(track);
+      }
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
   }
 
   Future<void> _start({required bool shuffle, Track? from}) async {
@@ -323,7 +355,34 @@ class _MixScreenState extends State<MixScreen> {
     for (final item in items) {
       final track = item.track;
       if (track == null) {
-        widgets.add(const _SkeletonRow());
+        widgets.add(ListTile(
+          key: ValueKey(item.rec.key),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: CoverArt(
+                imageUrl: item.rec.imageUrl,
+                seed: item.rec.title,
+                cacheWidth: 150,
+                iconSize: 22,
+              ),
+            ),
+          ),
+          title: Text(
+            item.rec.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text(
+            item.rec.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => _playIndex(item.index),
+        ));
         continue;
       }
       final index = playable.indexOf(track);
@@ -362,46 +421,5 @@ class _MixScreenState extends State<MixScreen> {
       ));
     }
     return widgets;
-  }
-}
-
-class _SkeletonRow extends StatelessWidget {
-  const _SkeletonRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    Widget block(double w, double h) => Container(
-          width: w,
-          height: h,
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(6),
-          ),
-        );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Shimmer.fromColors(
-        baseColor: scheme.surfaceContainerHighest,
-        highlightColor: scheme.surfaceContainerHigh,
-        child: Row(
-          children: [
-            block(50, 50),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  block(160, 14),
-                  const SizedBox(height: 8),
-                  block(100, 12)
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

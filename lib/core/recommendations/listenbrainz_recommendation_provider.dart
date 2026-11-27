@@ -51,11 +51,13 @@ class ListenBrainzRecommendationProvider implements RecommendationProvider {
       r['caa_release_mbid'],
       r['caa_id'],
     );
+    final mbid = r['recording_mbid']?.toString().trim() ?? '';
     return RecTrack(
       title: title,
       artist: artist,
       album: r['release_name']?.toString(),
       imageUrl: imageUrl,
+      mbid: mbid.isEmpty ? null : mbid,
     );
   }
 
@@ -76,11 +78,19 @@ class ListenBrainzRecommendationProvider implements RecommendationProvider {
         : jspfTrack?['caa_release_mbid'];
     final caaId =
         additional is Map ? additional['caa_id'] : jspfTrack?['caa_id'];
+    var mbid = jspfTrack?['recording_mbid']?.toString().trim() ?? '';
+    if (mbid.isEmpty) {
+      final idUri = t['identifier']?.toString() ?? '';
+      if (idUri.contains('/recording/')) {
+        mbid = idUri.split('/').last.trim();
+      }
+    }
     return RecTrack(
       title: title,
       artist: artist,
       album: t['album']?.toString(),
       imageUrl: ListenBrainzService.coverArtUrl(caaRelease, caaId),
+      mbid: mbid.isEmpty ? null : mbid,
     );
   }
 
@@ -98,11 +108,16 @@ class ListenBrainzRecommendationProvider implements RecommendationProvider {
     final album = rel is Map ? rel['name']?.toString() : null;
     final caaRelease = rel is Map ? rel['caa_release_mbid'] : null;
     final caaId = rel is Map ? rel['caa_id'] : null;
+    final mbid = (rec is Map ? rec['mbid'] : entry['recording_mbid'])
+            ?.toString()
+            .trim() ??
+        '';
     return RecTrack(
       title: title,
       artist: artist,
       album: album,
       imageUrl: ListenBrainzService.coverArtUrl(caaRelease, caaId),
+      mbid: mbid.isEmpty ? null : mbid,
     );
   }
 
@@ -114,8 +129,11 @@ class ListenBrainzRecommendationProvider implements RecommendationProvider {
     return mbid.isEmpty ? null : mbid;
   }
 
-  String _cleanPrompt(String value) =>
-      value.replaceAll('(', ' ').replaceAll(')', ' ').trim();
+  String _cleanPrompt(String value) => primaryArtist(value)
+      .replaceAll('(', ' ')
+      .replaceAll(')', ' ')
+      .replaceAll(',', ' ')
+      .trim();
 
   @override
   Future<List<RecTrack>> station(StationKind kind) async {

@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../core/models/addon_models.dart';
 import '../../core/models/models.dart';
@@ -20,7 +21,7 @@ const kLoggedOutTags = ['pop', 'rock', 'hip-hop'];
 /// refreshed in the background; their songs are looked up in the addon one by
 /// one (see [ResolvedShelf]).
 class HomeController extends ChangeNotifier {
-  /// Songs resolved per home shelf. The mix screen resolves them all.
+  /// Songs displayed per home shelf row. The mix screen shows them all.
   static const _shelfLimit = 16;
 
   final RecommendationService recs;
@@ -65,7 +66,20 @@ class HomeController extends ChangeNotifier {
     required this.history,
   });
 
-  ResolvedShelf _newShelf() => ResolvedShelf(recs.resolver, limit: _shelfLimit);
+  final Set<String> _prewarmedUrls = {};
+
+  void _prewarmCover(String url) {
+    if (_disposed || !_prewarmedUrls.add(url)) return;
+    try {
+      CachedNetworkImageProvider(url).resolve(ImageConfiguration.empty);
+    } catch (_) {}
+  }
+
+  ResolvedShelf _newShelf() => ResolvedShelf(
+        recs.resolver,
+        eagerResolve: false,
+        onCoverResolved: _prewarmCover,
+      );
 
   /// Personal recommendations are available (switched on and logged in).
   bool get personal => recs.canRecommend;

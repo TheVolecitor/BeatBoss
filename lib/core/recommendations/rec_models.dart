@@ -12,6 +12,7 @@ class RecTrack {
   final String? imageUrl;
   final double? match;
   final String? isrc;
+  final String? mbid;
   final int? durationMs;
 
   const RecTrack({
@@ -21,8 +22,30 @@ class RecTrack {
     this.imageUrl,
     this.match,
     this.isrc,
+    this.mbid,
     this.durationMs,
   });
+
+  RecTrack copyWith({
+    String? title,
+    String? artist,
+    String? album,
+    String? imageUrl,
+    double? match,
+    String? isrc,
+    String? mbid,
+    int? durationMs,
+  }) =>
+      RecTrack(
+        title: title ?? this.title,
+        artist: artist ?? this.artist,
+        album: album ?? this.album,
+        imageUrl: imageUrl ?? this.imageUrl,
+        match: match ?? this.match,
+        isrc: isrc ?? this.isrc,
+        mbid: mbid ?? this.mbid,
+        durationMs: durationMs ?? this.durationMs,
+      );
 
   /// Stable identity used for de-duplication and resolve caching.
   String get key => '${normalizeKeyPart(artist)}|${normalizeKeyPart(title)}';
@@ -34,6 +57,7 @@ class RecTrack {
         'imageUrl': imageUrl,
         'match': match,
         if (isrc != null) 'isrc': isrc,
+        if (mbid != null) 'mbid': mbid,
         if (durationMs != null) 'durationMs': durationMs,
       };
 
@@ -45,6 +69,9 @@ class RecTrack {
         match: (json['match'] as num?)?.toDouble(),
         isrc: (json['isrc'] is String && (json['isrc'] as String).trim().isNotEmpty)
             ? (json['isrc'] as String).trim()
+            : null,
+        mbid: (json['mbid'] is String && (json['mbid'] as String).trim().isNotEmpty)
+            ? (json['mbid'] as String).trim()
             : null,
         durationMs: (json['durationMs'] as num?)?.toInt(),
       );

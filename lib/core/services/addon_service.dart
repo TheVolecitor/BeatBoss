@@ -384,6 +384,26 @@ class AddonService extends ChangeNotifier {
 
   // ========== ISRC & Exact Resolve ==========
 
+  bool supportsIsrcFor([String? addonId]) {
+    final id = addonId ?? _activeAddonId;
+    if (id == null) return false;
+    final manifest = _getManifest(id);
+    return manifest != null &&
+        isAddonEnabled(manifest.id) &&
+        manifest.addonType == AddonType.server &&
+        manifest.supportsIsrc;
+  }
+
+  bool supportsResolveFor([String? addonId]) {
+    final id = addonId ?? _activeAddonId;
+    if (id == null) return false;
+    final manifest = _getManifest(id);
+    return manifest != null &&
+        isAddonEnabled(manifest.id) &&
+        manifest.addonType == AddonType.server &&
+        manifest.supportsResolve;
+  }
+
   /// Calls GET /resolve-isrc?isrc={isrc} on [addonId] (or active addon).
   /// Returns the addon trackId if found, or null if unsupported / not found.
   Future<String?> resolveIsrc(String isrc, {String? addonId}) async {
@@ -872,14 +892,20 @@ class AddonService extends ChangeNotifier {
     if (manifest == null) return false;
 
     if (manifest.addonType == AddonType.user) {
-      return await _userHandlers[manifest.id]?.createLibrary(name) ?? false;
+      final created =
+          await _userHandlers[manifest.id]?.createLibrary(name) ?? false;
+      if (created) notifyListeners();
+      return created;
     } else {
       try {
         final response = await _dio.post(
           '${manifest.baseUrl}/libraries',
           data: {'name': name},
         );
-        return response.statusCode == 200 || response.statusCode == 201;
+        final created =
+            response.statusCode == 200 || response.statusCode == 201;
+        if (created) notifyListeners();
+        return created;
       } catch (e) {
         print('[AddonService] Server createLibrary error for ${manifest.id}: $e');
         return false;

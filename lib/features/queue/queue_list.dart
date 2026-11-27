@@ -47,9 +47,11 @@ class QueueList extends StatelessWidget {
       padding: padding,
       header: header,
       itemCount: queue.length,
-      onReorderItem: player.reorderQueue,
+      onReorder: player.reorderQueue,
       itemBuilder: (context, index) {
         final track = queue[index];
+        final entryId =
+            index < player.queueIds.length ? player.queueIds[index] : index;
         final isPlaying = index == player.currentIndex;
         final gap = large ? 12.0 : 8.0;
 
@@ -140,7 +142,7 @@ class QueueList extends StatelessWidget {
         final row = isPlaying
             ? tile
             : Dismissible(
-                key: ValueKey('dismiss_${track.id}_$index'),
+                key: ValueKey('dismiss_$entryId'),
                 direction: DismissDirection.endToStart,
                 onDismissed: (_) => player.removeFromQueue(index),
                 background: Container(
@@ -158,7 +160,7 @@ class QueueList extends StatelessWidget {
 
         // Section labels travel with the first row of their section.
         return KeyedSubtree(
-          key: ValueKey('${track.id}_$index'),
+          key: ValueKey('queue_row_$entryId'),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,

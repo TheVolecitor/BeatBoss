@@ -24,6 +24,26 @@ void playFromShelf(BuildContext context, ResolvedShelf shelf, Track track) {
   context.read<AudioPlayerService>().playAll(tracks, startIndex: start);
 }
 
+/// Resolves [index] on-demand (using MBID -> ISRC -> addon resolve/search)
+/// if needed, then starts playback.
+Future<void> playShelfIndex(
+    BuildContext context, ResolvedShelf shelf, int index) async {
+  final player = context.read<AudioPlayerService>();
+  final track = await shelf.resolveAt(index);
+  if (!context.mounted) return;
+  if (track == null) {
+    AppToast.show(context, 'Track not available in active addon', isError: true);
+    return;
+  }
+  final tracks = shelf.playable;
+  final start = tracks.indexWhere((t) => t.id == track.id);
+  if (start >= 0 && tracks.length > 1) {
+    await player.playAll(tracks, startIndex: start);
+  } else {
+    await player.playSingleTrack(track);
+  }
+}
+
 /// Opens the full list for [shelf].
 void openMix(BuildContext context, ResolvedShelf shelf,
     {Future<List<RecTrack>> Function(int page)? loadMore}) {
@@ -38,9 +58,11 @@ void openMix(BuildContext context, ResolvedShelf shelf,
 
 /// One card per entry of [shelf]: playable ones are tappable, ones still being
 /// looked up show their recommended title greyed out.
-List<Widget> trackCards(BuildContext context, ResolvedShelf shelf) {
+List<Widget> trackCards(BuildContext context, ResolvedShelf shelf,
+    {int maxCards = 16}) {
+  final visible = shelf.items.take(maxCards);
   return [
-    for (final item in shelf.items)
+    for (final item in visible)
       if (item.track case final track?)
         MediaCard(
           key: ValueKey(item.rec.key),
@@ -49,6 +71,14 @@ List<Widget> trackCards(BuildContext context, ResolvedShelf shelf) {
           subtitle: track.artist,
           onTap: () => playFromShelf(context, shelf, track),
           menu: TrackMenuButton(track: track),
+        )
+      else if (!shelf.eagerResolve)
+        MediaCard(
+          key: ValueKey(item.rec.key),
+          imageUrl: item.rec.imageUrl,
+          title: item.rec.title,
+          subtitle: item.rec.artist,
+          onTap: () => playShelfIndex(context, shelf, item.index),
         )
       else
         Opacity(

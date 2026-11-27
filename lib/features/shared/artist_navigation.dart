@@ -52,7 +52,11 @@ Future<bool> openArtistByName(BuildContext context, String name) async {
     print('openArtistByName: search failed for "$name": $e');
   }
   final artist = pickArtist(result?.artists ?? const [], name);
-  if (artist == null || !context.mounted) return false;
+  if (artist == null ||
+      normalizeForMatch(artist.name) != normalizeForMatch(name) ||
+      !context.mounted) {
+    return false;
+  }
   openArtistPage(
     context,
     id: artist.id,

@@ -6,6 +6,7 @@ import '../models/addon_models.dart';
 import '../models/models.dart';
 import '../services/addon_service.dart';
 import '../utils/hive/hive_provider.dart';
+import 'musicbrainz_lookup.dart';
 import 'rec_models.dart';
 import 'track_matching.dart';
 
@@ -33,9 +34,11 @@ class TrackResolver {
   static const _boxName = 'rec_resolve';
   static const _hitTtl = Duration(days: 7);
   static const _missTtl = Duration(days: 1);
+  static const _coverTtl = Duration(hours: 6);
   static const _maxConcurrentSearches = 4;
 
   final AddonService _addons;
+  final MusicBrainzLookup _mbLookup;
   Box? _box;
 
   /// Same key resolved twice at once shares one search.
@@ -44,7 +47,32 @@ class TrackResolver {
   int _activeSearches = 0;
   final Queue<Completer<void>> _waiters = Queue();
 
-  TrackResolver(this._addons);
+  TrackResolver(this._addons, {MusicBrainzLookup? mbLookup})
+      : _mbLookup = mbLookup ?? MusicBrainzLookup();
+
+  /// Bulk-resolves ISRCs for [mbids] via MusicBrainz without touching any addon.
+  Future<Map<String, MusicBrainzRecordingInfo>> lookupMbidsBulk(
+          List<String> mbids) =>
+      _mbLookup.lookupRecordingsBulk(mbids);
+
+  /// Resolves cover art via Deezer (by ISRC or title+artist) without auth.
+  Future<String?> resolveDeezerCover({
+    String? isrc,
+    String? title,
+    String? artist,
+  }) =>
+      _mbLookup.resolveDeezerCover(
+        isrc: isrc,
+        title: title,
+        artist: artist,
+      );
+
+  /// Resolves a cover URL from a MusicBrainz recording MBID without touching
+  /// the active addon.
+  Future<String?> resolveCoverFromMbid(String mbid) async {
+    final info = await _mbLookup.lookupRecording(mbid);
+    return info?.coverUrl;
+  }
 
   Future<void> init() async {
     _box = await Hive.openBox(_boxName);
@@ -78,19 +106,49 @@ class TrackResolver {
     controller.onCancel = () => cancelled = true;
 
     var next = 0;
-    Future<void> worker() async {
-      while (!cancelled && next < recs.length) {
+    Future<void> worker(List<RecTrack> items) async {
+      while (!cancelled && next < items.length) {
         final i = next++;
-        final track = await resolve(recs[i]);
+        final track = await resolve(items[i]);
         if (!cancelled && !controller.isClosed) controller.add((i, track));
       }
     }
 
     () async {
-      final workers = recs.length < _maxConcurrentSearches
-          ? recs.length
+      // Pre-batch MBID -> ISRC + cover via ListenBrainz (30 MBIDs per 1.5s)
+      // so MixScreen ("See all") doesn't fall back to per-track MusicBrainz
+      // calls.
+      final mbids = <String>[
+        for (final r in recs)
+          if ((r.isrc == null || r.isrc!.trim().isEmpty) &&
+              r.mbid != null &&
+              r.mbid!.trim().isNotEmpty)
+            r.mbid!.trim(),
+      ];
+      var enrichedRecs = recs;
+      if (mbids.isNotEmpty) {
+        final bulk = await _mbLookup.lookupRecordingsBulk(mbids);
+        if (cancelled) return;
+        enrichedRecs = [
+          for (final r in recs)
+            if (r.mbid != null && bulk.containsKey(r.mbid!.trim()))
+              r.copyWith(
+                isrc: (r.isrc == null || r.isrc!.trim().isEmpty)
+                    ? bulk[r.mbid!.trim()]!.isrc
+                    : r.isrc,
+                imageUrl: (r.imageUrl == null || r.imageUrl!.isEmpty)
+                    ? bulk[r.mbid!.trim()]!.coverUrl
+                    : r.imageUrl,
+              )
+            else
+              r,
+        ];
+      }
+
+      final workers = enrichedRecs.length < _maxConcurrentSearches
+          ? enrichedRecs.length
           : _maxConcurrentSearches;
-      await Future.wait(List.generate(workers, (_) => worker()));
+      await Future.wait(List.generate(workers, (_) => worker(enrichedRecs)));
       if (!controller.isClosed) await controller.close();
     }();
 
@@ -103,8 +161,25 @@ class TrackResolver {
 
     await _acquire();
     try {
+      var enriched = rec;
+      // 0. If we have a MusicBrainz recording MBID and the addon supports ISRC
+      //    resolution, look up the ISRC from MusicBrainz first.
+      if ((enriched.isrc == null || enriched.isrc!.trim().isEmpty) &&
+          enriched.mbid != null &&
+          enriched.mbid!.isNotEmpty &&
+          (_addons.supportsIsrcFor(addonId) ||
+              _addons.supportsResolveFor(addonId))) {
+        final mbInfo = await _mbLookup.lookupRecording(enriched.mbid!);
+        if (mbInfo != null) {
+          enriched = enriched.copyWith(
+            isrc: mbInfo.isrc ?? enriched.isrc,
+            imageUrl: enriched.imageUrl ?? mbInfo.coverUrl,
+          );
+        }
+      }
+
       // 1. Eclipse /resolve endpoint (uses ISRC when known, or title+artist+durationMs)
-      final exact = await _addons.resolveTrack(rec, addonId: addonId);
+      final exact = await _addons.resolveTrack(enriched, addonId: addonId);
       if (exact.handled) {
         final track = exact.track != null ? trackFromAddon(exact.track!) : null;
         await _writeCache(key, track);
@@ -112,17 +187,27 @@ class TrackResolver {
       }
 
       // 2. Eclipse /resolve-isrc?isrc=... lookup when ISRC is known
-      final recIsrc = rec.isrc?.trim();
+      final recIsrc = enriched.isrc?.trim();
       if (recIsrc != null && recIsrc.isNotEmpty) {
         final isrcTrackId = await _addons.resolveIsrc(recIsrc, addonId: addonId);
         if (isrcTrackId != null) {
+          var cover = enriched.imageUrl;
+          if (cover == null || cover.isEmpty) {
+            cover = await _mbLookup.resolveDeezerCover(
+              isrc: recIsrc,
+              title: enriched.title,
+              artist: enriched.artist,
+            );
+          }
           final track = Track(
             id: isrcTrackId,
-            title: rec.title,
-            artist: rec.artist,
-            albumTitle: rec.album,
-            albumCover: rec.imageUrl,
-            duration: rec.durationMs != null ? (rec.durationMs! / 1000).round() : null,
+            title: enriched.title,
+            artist: enriched.artist,
+            albumTitle: enriched.album,
+            albumCover: cover,
+            duration: enriched.durationMs != null
+                ? (enriched.durationMs! / 1000).round()
+                : null,
             addonId: addonId,
             addonTrackId: isrcTrackId,
             isrc: recIsrc,
@@ -134,7 +219,7 @@ class TrackResolver {
 
       // 3. Fallback to /search, prioritizing ISRC match among results
       final result = await _addons.search(
-        '${rec.title} ${rec.artist}',
+        '${enriched.title} ${enriched.artist}',
         limit: 5,
         addonId: addonId,
       );
@@ -145,7 +230,7 @@ class TrackResolver {
       var bestScore = 0.0;
       for (final candidate in result.tracks) {
         final score = scoreMatch(
-          rec,
+          enriched,
           candidate.title,
           candidate.artist,
           candidateIsrc: candidate.isrc,
@@ -156,8 +241,27 @@ class TrackResolver {
         }
       }
 
-      final track =
-          (best != null && bestScore >= kMatchThreshold) ? trackFromAddon(best) : null;
+      Track? track;
+      if (best != null && bestScore >= kMatchThreshold) {
+        final base = trackFromAddon(best);
+        final fallbackCover = enriched.imageUrl;
+        track = (base.albumCover == null || base.albumCover!.isEmpty) &&
+                fallbackCover != null &&
+                fallbackCover.isNotEmpty
+            ? Track(
+                id: base.id,
+                title: base.title,
+                artist: base.artist,
+                albumTitle: base.albumTitle,
+                albumCover: fallbackCover,
+                duration: base.duration,
+                addonId: base.addonId,
+                addonTrackId: base.addonTrackId,
+                streamURL: base.streamURL,
+                isrc: base.isrc,
+              )
+            : base;
+      }
       await _writeCache(key, track);
       return track;
     } catch (e) {
@@ -166,6 +270,37 @@ class TrackResolver {
     } finally {
       _release();
     }
+  }
+
+  /// Returns cached cover art / ISRC for [recKey] if younger than 6 hours.
+  ({String? imageUrl, String? isrc})? getCachedCover(String recKey) {
+    final raw = _box?.get('cover:$recKey');
+    if (raw is! String) return null;
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final at = DateTime.fromMillisecondsSinceEpoch((data['at'] as num).toInt());
+      if (DateTime.now().difference(at) > _coverTtl) return null;
+      return (
+        imageUrl: data['img']?.toString(),
+        isrc: data['isrc']?.toString(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Caches resolved cover art / ISRC for [recKey] for 6 hours.
+  Future<void> cacheCover(String recKey, {String? imageUrl, String? isrc}) async {
+    try {
+      await _box?.put(
+        'cover:$recKey',
+        jsonEncode({
+          'img': imageUrl,
+          'isrc': isrc,
+          'at': DateTime.now().millisecondsSinceEpoch,
+        }),
+      );
+    } catch (_) {}
   }
 
   ({Track? track})? _readCache(String key) {

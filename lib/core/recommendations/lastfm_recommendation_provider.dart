@@ -49,11 +49,13 @@ List<RecTrack> parseLastFmTracks(dynamic node) {
         ? (artistNode['name'] ?? artistNode['#text'])?.toString() ?? ''
         : artistNode?.toString() ?? '';
     if (title.isEmpty || artist.isEmpty) continue;
+    final rawMbid = t['mbid']?.toString().trim() ?? '';
     result.add(RecTrack(
       title: title,
       artist: artist,
       imageUrl: pickLastFmImage(t['image']),
       match: _toDouble(t['match']),
+      mbid: rawMbid.isEmpty ? null : rawMbid,
     ));
   }
   return result;

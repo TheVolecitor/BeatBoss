@@ -33,6 +33,7 @@ class AudioPlayerService with ChangeNotifier {
   bool _isBuffering = false;
 
   List<Track> _queue = [];
+  List<int> _queueIds = [];
   int _currentIndex = -1;
 
   // Autoplay / radio: where the autoplay section of the queue starts, the song
@@ -91,6 +92,7 @@ class AudioPlayerService with ChangeNotifier {
 
   // Getters
   List<Track> get queue => _queue;
+  List<int> get queueIds => _queueIds;
   List<Track> get internalQueue => _queue;
 
   /// Index in [queue] of the first track autoplay added, or null if none.
@@ -268,6 +270,10 @@ class AudioPlayerService with ChangeNotifier {
     // Listen to Queue
     _handler.queue.listen((items) {
       _autoplayStartIndex = null;
+      _queueIds = [
+        for (var i = 0; i < items.length; i++)
+          (items[i].extras?['queueEntryId'] as int?) ?? i,
+      ];
       _queue = [
         for (var i = 0; i < items.length; i++)
           () {

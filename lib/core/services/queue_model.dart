@@ -25,6 +25,7 @@ class QueueModel {
   List<int>? _shuffleOriginalIds;
 
   UnmodifiableListView<Track> get tracks => UnmodifiableListView(_tracks);
+  UnmodifiableListView<int> get ids => UnmodifiableListView(_ids);
   int get length => _tracks.length;
   bool get isEmpty => _tracks.isEmpty;
   bool get isNotEmpty => _tracks.isNotEmpty;

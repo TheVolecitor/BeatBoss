@@ -471,7 +471,11 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     final start = _q.autoplayStart;
     queue.add([
       for (var i = 0; i < tracks.length; i++)
-        _toMediaItem(tracks[i], autoplay: start != null && i >= start),
+        _toMediaItem(
+          tracks[i],
+          autoplay: start != null && i >= start,
+          queueEntryId: i < _q.ids.length ? _q.ids[i] : null,
+        ),
     ]);
   }
 
@@ -994,7 +998,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// [autoplay] marks tracks that autoplay added, so the UI can show them in
   /// their own section.
-  MediaItem _toMediaItem(Track track, {bool autoplay = false}) {
+  MediaItem _toMediaItem(Track track, {bool autoplay = false, int? queueEntryId}) {
     Uri? artUri;
 
     // ON WINDOWS: The SMTC WinRT bridge throws a C++ exception
@@ -1030,7 +1034,11 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
               : Duration(seconds: track.duration!))
           : null,
       artUri: artUri,
-      extras: {'track': track.toJson(), if (autoplay) 'autoplay': true},
+      extras: {
+        'track': track.toJson(),
+        if (autoplay) 'autoplay': true,
+        if (queueEntryId != null) 'queueEntryId': queueEntryId,
+      },
     );
   }
 

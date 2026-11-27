@@ -44,12 +44,38 @@ class QuickPicksSection extends StatelessWidget {
       listenable: source,
       builder: (context, _) {
         final seen = <String>{};
-        final picks = <Track>[
-          for (final t in [...recent.take(4), ...source.playable])
-            if (seen.add(matchKey(t.artist, t.title))) t,
-        ].take(8).toList();
+        final entries = <({
+          String title,
+          String? imageUrl,
+          String? trackId,
+          Track? track,
+          int? shelfIndex,
+        })>[];
+        for (final t in recent.take(4)) {
+          if (seen.add(matchKey(t.artist, t.title))) {
+            entries.add((
+              title: t.title,
+              imageUrl: t.albumCover,
+              trackId: t.id,
+              track: t,
+              shelfIndex: null,
+            ));
+          }
+        }
+        for (final item in source.items) {
+          if (entries.length >= 8) break;
+          final key = matchKey(item.rec.artist, item.rec.title);
+          if (!seen.add(key)) continue;
+          entries.add((
+            title: item.track?.title ?? item.rec.title,
+            imageUrl: item.track?.albumCover ?? item.rec.imageUrl,
+            trackId: item.track?.id,
+            track: item.track,
+            shelfIndex: item.index,
+          ));
+        }
 
-        if (picks.isEmpty) {
+        if (entries.isEmpty) {
           if (!controller.loading || !controller.sourceEnabled) {
             return const SizedBox.shrink();
           }
@@ -62,20 +88,31 @@ class QuickPicksSection extends StatelessWidget {
           );
         }
 
+        final resolvedTracks =
+            entries.map((e) => e.track).whereType<Track>().toList();
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _title('Quick picks'),
             QuickPickGrid(
               tiles: [
-                for (var i = 0; i < picks.length; i++)
+                for (final entry in entries)
                   QuickPickTile(
-                    title: picks[i].title,
-                    imageUrl: picks[i].albumCover,
-                    playing: picks[i].id == current,
-                    onTap: () => context
-                        .read<AudioPlayerService>()
-                        .playAll(picks, startIndex: i),
+                    title: entry.title,
+                    imageUrl: entry.imageUrl,
+                    playing: entry.trackId != null && entry.trackId == current,
+                    onTap: () {
+                      if (entry.track != null) {
+                        final idx = resolvedTracks
+                            .indexWhere((t) => t.id == entry.track!.id);
+                        context.read<AudioPlayerService>().playAll(
+                            resolvedTracks,
+                            startIndex: idx < 0 ? 0 : idx);
+                      } else if (entry.shelfIndex != null) {
+                        playShelfIndex(context, source, entry.shelfIndex!);
+                      }
+                    },
                   ),
               ],
             ),
