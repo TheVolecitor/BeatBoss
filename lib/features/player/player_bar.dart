@@ -12,10 +12,11 @@ import '../../core/services/addon_service.dart';
 import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_screen.dart';
 import '../queue/queue_widgets.dart';
-import '../search/search_screen.dart';
-import '../shared/addon_detail_screen.dart';
+import '../shared/artist_navigation.dart';
+import 'artwork_theme.dart';
 import 'desktop_fullscreen_player.dart';
 import 'player_seekbar.dart';
+import 'now_playing_actions.dart';
 
 /// Player Bar - bottom player controls matching original exactly
 class PlayerBar extends StatefulWidget {
@@ -735,6 +736,17 @@ class _ExpandedMobilePlayer extends StatelessWidget {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
+  void _openArtist(BuildContext context, Track track) {
+    final artistId = track.artistId;
+    final addonId = track.addonId;
+    if (artistId != null && addonId != null) {
+      openArtistPage(context,
+          id: artistId, addonId: addonId, name: track.artist);
+    } else {
+      openArtistByName(context, track.artist);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final textColor = isDark ? Colors.white : Colors.black;
@@ -746,8 +758,8 @@ class _ExpandedMobilePlayer extends StatelessWidget {
       maxChildSize: 1.0,
       snap: true,
       builder: (context, scrollController) {
-        final screenHeight = MediaQuery.of(context).size.height;
         final screenWidth = MediaQuery.of(context).size.width;
+        final screenHeight = MediaQuery.of(context).size.height;
         final isSmallScreen = screenHeight < 700;
 
         // Dynamic sizes — bigger cover art in mobile fullscreen
@@ -761,13 +773,12 @@ class _ExpandedMobilePlayer extends StatelessWidget {
           // The sheet is opened with the track that was playing at that moment;
           // follow the player so Next/Previous update art, title and artist.
           final track = player.currentTrack ?? this.track;
-          return Container(
-            decoration: BoxDecoration(
-              color:
-                  isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
+          return ArtworkTheme(
+            imageUrl: track.displayImage,
+            builder: (context, scheme) => ArtworkGradient(
+            scheme: scheme,
+            base: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             child: SingleChildScrollView(
               controller: scrollController,
               child: ConstrainedBox(
@@ -892,21 +903,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           GestureDetector(
-                            onTap: track.artistId != null
-                                ? () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => AddonDetailScreen(
-                                          id: track.artistId!,
-                                          type: AddonDetailType.artist,
-                                          addonId: track.addonId ?? '',
-                                          initialTitle: track.artist,
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                : null,
+                            onTap: () => _openArtist(context, track),
                             child: Text(track.artist,
                                 style: TextStyle(
                                   color: secondaryColor,
@@ -995,7 +992,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                             icon: const Icon(Icons.shuffle),
                             iconSize: 28, // Added size
                             color: player.shuffleEnabled
-                                ? AppTheme.primaryGreen
+                                ? scheme.primary
                                 : secondaryColor,
                             onPressed: player.toggleShuffle,
                           ),
@@ -1007,16 +1004,16 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                           ),
                           FloatingActionButton(
                             heroTag: 'play_pause_fab', // Unique tag
-                            backgroundColor: AppTheme.primaryGreen,
+                            backgroundColor: scheme.primary,
                             onPressed: player.togglePlayPause,
                             child: player.isBuffering
-                                ? const Center(
+                                ? Center(
                                     child: SizedBox(
                                       width: 24,
                                       height: 24,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 3,
-                                        color: Colors.black,
+                                        color: scheme.onPrimary,
                                       ),
                                     ),
                                   )
@@ -1024,7 +1021,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                     player.isPlaying
                                         ? Icons.pause
                                         : Icons.play_arrow,
-                                    color: Colors.black,
+                                    color: scheme.onPrimary,
                                     size: 42), // Increased
                           ),
                           IconButton(
@@ -1039,7 +1036,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                 : Icons.repeat),
                             iconSize: 28, // Added size
                             color: player.loopMode != LoopMode.off
-                                ? AppTheme.primaryGreen
+                                ? scheme.primary
                                 : secondaryColor,
                             onPressed: player.toggleLoop,
                           ),
@@ -1052,19 +1049,6 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          TextButton.icon(
-                            icon: Icon(Icons.lyrics_outlined,
-                                color: secondaryColor),
-                            label: Text('Lyrics',
-                                style: TextStyle(color: secondaryColor)),
-                            onPressed: () {
-                              showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => const LyricsScreen());
-                            },
-                          ),
                           // Relocated Heart Button
                           Consumer<LocalLibraryService>(
                             builder: (context, localLibrary, child) {
@@ -1082,7 +1066,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                       ? Icons.favorite
                                       : Icons.favorite_border),
                                   color: isFav
-                                      ? AppTheme.primaryGreen
+                                      ? scheme.primary
                                       : secondaryColor,
                                   iconSize: 32,
                                   onPressed: () {
@@ -1095,20 +1079,26 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                             },
                           ),
                           IconButton(
-                            icon: Icon(Icons.radio,
-                                color: player.radioSeed != null
-                                    ? AppTheme.primaryGreen
-                                    : secondaryColor),
-                            tooltip: player.radioSeed != null
-                                ? 'Stop radio'
-                                : 'Start radio',
-                            onPressed: () => toggleRadio(context, player, track),
+                            icon: Icon(Icons.lyrics_outlined,
+                                color: secondaryColor),
+                            tooltip: 'Lyrics',
+                            onPressed: () {
+                              showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (_) => const LyricsScreen());
+                            },
                           ),
-                          TextButton.icon(
+                          GoToArtistButton(track: track, color: secondaryColor),
+                          RadioButton(
+                              track: track,
+                              color: secondaryColor,
+                              activeColor: scheme.primary),
+                          IconButton(
                             icon:
                                 Icon(Icons.queue_music, color: secondaryColor),
-                            label: Text('Queue',
-                                style: TextStyle(color: secondaryColor)),
+                            tooltip: 'Queue',
                             onPressed: () {
                               showModalBottomSheet(
                                   context: context,
@@ -1125,6 +1115,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                 ),
               ),
             ),
+          ),
           );
         });
       },

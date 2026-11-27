@@ -9,6 +9,13 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/models/models.dart';
 import '../../core/models/addon_models.dart';
+import '../../core/recommendations/rec_models.dart';
+import '../../core/recommendations/recommendation_service.dart';
+import '../../core/utils/app_toast.dart';
+import '../queue/queue_widgets.dart';
+import 'artist_navigation.dart';
+import 'media_card.dart';
+import 'shelf_section.dart';
 import 'track_list_tile.dart';
 import 'batch_download_dialog.dart';
 import '../player/player_bar.dart';
@@ -44,6 +51,9 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
   List<Track> _tracks = [];
   String? _error;
 
+  /// "Fans also like <artist>" (artist pages only).
+  RecShelf? _fans;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +88,7 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
             _tracks = artist.topTracks?.map((at) => _mapToTrack(at)).toList() ?? [];
             _isLoading = false;
           });
+          _loadFans(artist.name);
         }
       } else if (widget.type == AddonDetailType.playlist) {
         final playlist = await addonService.getPlaylistDetail(widget.id, addonId: widget.addonId);
@@ -99,6 +110,64 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
         });
       }
     }
+  }
+
+  /// Shows the cached "Fans also like" row at once, then refreshes it.
+  Future<void> _loadFans(String artist) async {
+    final recs = context.read<RecommendationService>();
+    final cached = recs.cachedSimilarArtists(artist);
+    if (cached != null && cached.artists.isNotEmpty && mounted) {
+      setState(() => _fans = cached);
+    }
+    final fresh = await recs.similarArtistsShelf(artist);
+    if (!mounted || fresh == null || fresh.artists.isEmpty) return;
+    setState(() => _fans = fresh);
+  }
+
+  bool get _isArtist => widget.type == AddonDetailType.artist;
+
+  /// Starts a radio from the artist's first top track.
+  Future<void> _artistRadio() async {
+    if (_tracks.isEmpty) return;
+    await startRadioWithFeedback(
+        context, context.read<AudioPlayerService>(), _tracks.first);
+  }
+
+  /// Opens a similar artist's page, or starts their radio when the addon
+  /// doesn't know them.
+  Future<void> _openSimilarArtist(String name) async {
+    if (await openArtistByName(context, name) || !mounted) return;
+    final recs = context.read<RecommendationService>();
+    final player = context.read<AudioPlayerService>();
+    final track = await recs.firstPlayableTopTrack(name);
+    if (!mounted) return;
+    if (track == null) {
+      AppToast.show(context, 'Could not find $name', isError: true);
+      return;
+    }
+    await startRadioWithFeedback(context, player, track);
+  }
+
+  Widget _buildFans() {
+    final fans = _fans;
+    if (!_isArtist || fans == null || fans.artists.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return ShelfSection(
+      title: fans.title,
+      height: 205,
+      children: [
+        for (final a in fans.artists)
+          MediaCard(
+            key: ValueKey(a.name),
+            imageUrl: a.imageUrl,
+            title: a.name,
+            subtitle: 'Artist',
+            circle: true,
+            onTap: () => _openSimilarArtist(a.name),
+          ),
+      ],
+    );
   }
 
   Track _mapToTrack(AddonTrack at) {
@@ -274,6 +343,23 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
                             label: const Text('PLAY ALL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
                         ),
+                      if (_isArtist && _tracks.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _artistRadio,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white54),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            ),
+                            icon: const Icon(Icons.radio),
+                            label: const Text('ARTIST RADIO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          ),
+                        ),
+                      ],
                       const Spacer(),
                     ],
                   ),
@@ -389,6 +475,21 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
             ),
           ),
         ),
+        if (_isArtist && _tracks.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: OutlinedButton.icon(
+                onPressed: _artistRadio,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+                icon: const Icon(Icons.radio),
+                label: const Text('ARTIST RADIO', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           sliver: SliverList(
@@ -403,6 +504,12 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
               },
               childCount: _tracks.length,
             ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: _buildFans(),
           ),
         ),
       ],
@@ -421,8 +528,14 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: ListView.builder(
-        itemCount: _tracks.length,
+        itemCount: _tracks.length + 1,
         itemBuilder: (context, index) {
+          if (index == _tracks.length) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: _buildFans(),
+            );
+          }
           return TrackListTile(
             track: _tracks[index],
             tracks: _tracks,

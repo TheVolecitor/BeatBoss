@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
+import 'queue_list.dart';
 import 'queue_widgets.dart';
-
-// Row markers for the section labels (track rows use their queue index).
-const int _userSectionRow = -1;
-const int _autoplaySectionRow = -2;
 
 /// Queue Screen - display and manage play queue matching original
 class QueueScreen extends StatelessWidget {
@@ -20,17 +16,6 @@ class QueueScreen extends StatelessWidget {
     final player = context.watch<AudioPlayerService>();
     final settings = context.watch<SettingsService>();
     final isDark = settings.isDarkMode;
-
-    // List rows: a track index (>= 0) or a section label. The labels only
-    // appear once autoplay has added tracks.
-    final autoplayStart = player.autoplayStartIndex;
-    final rows = <int>[
-      if (autoplayStart != null) _userSectionRow,
-      for (var i = 0; i < player.internalQueue.length; i++) ...[
-        if (i == autoplayStart) _autoplaySectionRow,
-        i,
-      ],
-    ];
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
@@ -81,100 +66,10 @@ class QueueScreen extends StatelessWidget {
 
           // Queue content
           Expanded(
-            child: player.internalQueue.isEmpty
-                ? Center(
-                    child: Text(
-                      'Queue is empty',
-                      style: TextStyle(
-                        color: isDark ? Colors.white54 : Colors.black45,
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: EdgeInsets.fromLTRB(
-                        15, 0, 15, MediaQuery.of(context).viewPadding.bottom),
-                    itemCount: rows.length,
-                    itemBuilder: (context, rowIndex) {
-                      final row = rows[rowIndex];
-                      if (row == _userSectionRow) {
-                        return const QueueSectionLabel('Your queue');
-                      }
-                      if (row == _autoplaySectionRow) {
-                        return const AutoplaySectionLabel();
-                      }
-
-                      final index = row;
-                      final track = player.internalQueue[index];
-                      final isPlaying = index == player.currentIndex;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: isPlaying
-                              ? AppTheme.primaryGreen.withValues(alpha: 0.2)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 4),
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: SizedBox(
-                              width: 50,
-                              height: 50,
-                              child: CachedNetworkImage(
-                                imageUrl: track.displayImage,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 200,
-                                placeholder: (_, __) =>
-                                    Container(color: AppTheme.darkCard),
-                                errorWidget: (_, __, ___) => Container(
-                                  color: AppTheme.darkCard,
-                                  child: const Icon(Icons.music_note,
-                                      color: Colors.white30),
-                                ),
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            track.title,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black,
-                              fontWeight: isPlaying
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            track.artist,
-                            style: TextStyle(
-                              color: isDark ? Colors.white54 : Colors.black45,
-                            ),
-                            maxLines: 1,
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline),
-                                color: Colors.red,
-                                onPressed: () => player.removeFromQueue(index),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.play_arrow),
-                                color: AppTheme.primaryGreen,
-                                onPressed: () => player.playFromQueue(index),
-                              ),
-                            ],
-                          ),
-                          onTap: () => player.playFromQueue(index),
-                        ),
-                      );
-                    },
-                  ),
+            child: QueueList(
+              padding: EdgeInsets.fromLTRB(
+                  15, 0, 15, MediaQuery.of(context).viewPadding.bottom),
+            ),
           ),
         ],
       ),

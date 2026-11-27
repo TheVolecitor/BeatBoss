@@ -61,7 +61,9 @@ class TrackListTile extends StatelessWidget {
           ? Border.all(color: AppTheme.primaryGreen.withOpacity(0.3), width: 1)
           : null,
       ),
-      child: ListTile(
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         leading: Stack(
           children: [
@@ -194,6 +196,7 @@ class TrackListTile extends StatelessWidget {
             (onPlay ?? () => player.playSingleTrack(track))();
           }
         },
+      ),
       ),
     );
   }

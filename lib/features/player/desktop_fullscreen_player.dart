@@ -9,6 +9,9 @@ import '../../core/models/addon_models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../lyrics/lyrics_screen.dart';
+import '../queue/queue_list.dart';
+import 'artwork_theme.dart';
+import 'now_playing_actions.dart';
 import '../queue/queue_widgets.dart';
 import 'player_seekbar.dart';
 
@@ -44,7 +47,6 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
       return const SizedBox.shrink();
     }
 
-    final screenHeight = MediaQuery.of(context).size.height;
 
     return Focus(
       autofocus: true,
@@ -71,7 +73,9 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
       },
       child: Scaffold(
         backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
-      body: Stack(
+      body: ArtworkTheme(
+        imageUrl: track.displayImage,
+        builder: (context, scheme) => Stack(
         children: [
           // Blurred background
           if (track.displayImage.isNotEmpty)
@@ -85,8 +89,11 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
-              child: Container(
-                color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.7),
+              child: ArtworkGradient(
+                scheme: scheme,
+                base: isDark ? Colors.black : Colors.white,
+                opacity: 0.75,
+                child: const SizedBox.expand(),
               ),
             ),
           ),
@@ -324,7 +331,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                 IconButton(
                                   icon: const Icon(Icons.shuffle),
                                   iconSize: 28,
-                                  color: player.shuffleEnabled ? AppTheme.primaryGreen : (isDark ? Colors.white54 : Colors.black54),
+                                  color: player.shuffleEnabled ? scheme.primary : (isDark ? Colors.white54 : Colors.black54),
                                   onPressed: player.toggleShuffle,
                                 ),
                                 const SizedBox(width: 24),
@@ -342,23 +349,23 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                     width: 72,
                                     height: 72,
                                     decoration: BoxDecoration(
-                                      color: AppTheme.primaryGreen,
+                                      color: scheme.primary,
                                       shape: BoxShape.circle,
                                     ),
                                     child: player.isBuffering
-                                        ? const Center(
+                                        ? Center(
                                             child: SizedBox(
                                               width: 32,
                                               height: 32,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 3,
-                                                color: Colors.black,
+                                                color: scheme.onPrimary,
                                               ),
                                             ),
                                           )
                                         : Icon(
                                             player.isPlaying ? Icons.pause : Icons.play_arrow,
-                                            color: Colors.black,
+                                            color: scheme.onPrimary,
                                             size: 40,
                                           ),
                                   ),
@@ -374,8 +381,19 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                 IconButton(
                                   icon: Icon(player.loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat),
                                   iconSize: 28,
-                                  color: player.loopMode != LoopMode.off ? AppTheme.primaryGreen : (isDark ? Colors.white54 : Colors.black54),
+                                  color: player.loopMode != LoopMode.off ? scheme.primary : (isDark ? Colors.white54 : Colors.black54),
                                   onPressed: player.toggleLoop,
+                                ),
+                                const SizedBox(width: 24),
+                                GoToArtistButton(
+                                  track: track,
+                                  color: isDark ? Colors.white54 : Colors.black54,
+                                ),
+                                const SizedBox(width: 8),
+                                RadioButton(
+                                  track: track,
+                                  color: isDark ? Colors.white54 : Colors.black54,
+                                  activeColor: scheme.primary,
                                 ),
                               ],
                             ),
@@ -434,7 +452,15 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                         // Tab Content
                         Expanded(
                           child: _selectedIndex == 0
-                              ? const _QueueView()
+                              ? const QueueList(
+                                  large: true,
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 12),
+                                  header: Padding(
+                                    padding: EdgeInsets.only(bottom: 8),
+                                    child: QueueControls(),
+                                  ),
+                                )
                               : Padding(
                                   padding: const EdgeInsets.fromLTRB(
                                       20, 0, 24, 24),
@@ -473,6 +499,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
       ),
         ],
       ),
+      ),
     ),
     );
   }
@@ -509,138 +536,6 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
           )
         ],
       ),
-    );
-  }
-}
-
-// A slightly modified view of the Queue that fits into our tab space properly without the drag handles and modal heights.
-class _QueueView extends StatelessWidget {
-  const _QueueView();
-
-  @override
-  Widget build(BuildContext context) {
-    final player = context.watch<AudioPlayerService>();
-    final isDark = context.watch<SettingsService>().isDarkMode;
-
-    if (player.internalQueue.isEmpty) {
-      return Center(
-        child: Text(
-          'Queue is empty',
-          style: TextStyle(
-            color: isDark ? Colors.white54 : Colors.black45,
-            fontSize: 18,
-          ),
-        ),
-      );
-    }
-
-    return ReorderableListView.builder(
-      buildDefaultDragHandles: false,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      header: const Padding(
-        padding: EdgeInsets.only(bottom: 8),
-        child: QueueControls(),
-      ),
-      itemCount: player.internalQueue.length,
-      onReorder: (oldIndex, newIndex) {
-        if (oldIndex < newIndex) {
-          newIndex -= 1;
-        }
-        player.reorderQueue(oldIndex, newIndex);
-      },
-      itemBuilder: (context, index) {
-        final track = player.internalQueue[index];
-        final isPlaying = index == player.currentIndex;
-
-        final tile = Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: isPlaying
-                ? AppTheme.primaryGreen.withValues(alpha: 0.2)
-                : (isDark ? Colors.white10 : Colors.black12),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 12.0),
-                    child: Icon(Icons.drag_handle, color: isDark ? Colors.white54 : Colors.black54),
-                  ),
-                ),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 60,
-                    height: 60,
-                    child: CachedNetworkImage(
-                      imageUrl: track.displayImage,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 200,
-                      placeholder: (_, __) => Container(color: AppTheme.darkCard),
-                      errorWidget: (_, __, ___) => Container(
-                        color: AppTheme.darkCard,
-                        child: const Icon(Icons.music_note, color: Colors.white30),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            title: Text(
-              track.title,
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black,
-                fontWeight: isPlaying ? FontWeight.bold : FontWeight.w500,
-                fontSize: 16,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              track.artist,
-              style: TextStyle(
-                color: isDark ? Colors.white54 : Colors.black45,
-              ),
-              maxLines: 1,
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  color: Colors.redAccent,
-                  onPressed: () => player.removeFromQueue(index),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.play_arrow),
-                  color: AppTheme.primaryGreen,
-                  onPressed: () => player.playFromQueue(index),
-                ),
-              ],
-            ),
-            onTap: () => player.playFromQueue(index),
-          ),
-        );
-
-        // The first track autoplay added carries the section label with it.
-        return KeyedSubtree(
-          key: ValueKey('${track.id}_$index'),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (index == player.autoplayStartIndex)
-                const AutoplaySectionLabel(),
-              tile,
-            ],
-          ),
-        );
-      },
     );
   }
 }

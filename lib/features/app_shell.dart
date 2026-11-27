@@ -547,7 +547,7 @@ class _AppShellState extends State<AppShell> {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                         content: Text('Created library "${controller.text}"')));
                     // Navigate to Library screen to see it
-                    setState(() => _selectedIndex = 2);
+                    setState(() => _selectedIndex = 1);
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                         content: Text('Failed to create library. Ensure a Sync Addon is configured.')));
