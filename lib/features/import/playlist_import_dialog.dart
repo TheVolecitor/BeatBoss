@@ -147,11 +147,11 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
     final isDark = settings.isDarkMode;
 
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
           Icon(Icons.playlist_play, color: AppTheme.primaryGreen),
-          SizedBox(width: 10),
-          Text('Playlist Import'),
+          const SizedBox(width: 10),
+          const Text('Playlist Import'),
         ],
       ),
       content: SizedBox(
@@ -165,7 +165,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
 
   Widget _buildContent(bool isDark) {
     if (_isLoading) {
-      return const Center(
+      return Center(
           child: CircularProgressIndicator(color: AppTheme.primaryGreen));
     }
 
@@ -259,7 +259,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                           child: Text('LOCAL LIBRARIES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
                         ),
                         ...localLibs.map((lib) => ListTile(
-                              leading: const Icon(Icons.folder, color: AppTheme.primaryGreen),
+                              leading: Icon(Icons.folder, color: AppTheme.primaryGreen),
                               title: Text(lib.name),
                               onTap: () => _startImport(lib.id),
                               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -271,7 +271,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                           child: Text('CLOUD LIBRARIES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
                         ),
                         ...cloudLibs.map((lib) => ListTile(
-                              leading: const Icon(Icons.cloud, color: AppTheme.primaryGreen),
+                              leading: Icon(Icons.cloud, color: AppTheme.primaryGreen),
                               title: Text(lib.name),
                               onTap: () => _startImport(lib.id),
                               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -279,7 +279,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                       ],
                       const Divider(),
                       ListTile(
-                        leading: const Icon(Icons.add_circle_outline, color: AppTheme.primaryGreen),
+                        leading: Icon(Icons.add_circle_outline, color: AppTheme.primaryGreen),
                         title: const Text('Create New Local Library'),
                         onTap: () async {
                           final nameController = TextEditingController();
@@ -327,7 +327,7 @@ class _PlaylistImportDialogState extends State<PlaylistImportDialog> {
                 Text('${importService.importedCount} / ${importService.totalTracks} matched'),
                 const SizedBox(height: 20),
                 if (importService.statusMessage == 'Done!') ...[
-                  const Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 48),
+                  Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 48),
                   const SizedBox(height: 10),
                   const Text('Import Complete!', style: TextStyle(fontWeight: FontWeight.bold)),
                 ] else

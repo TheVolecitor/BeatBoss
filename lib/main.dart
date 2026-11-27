@@ -16,10 +16,12 @@ import 'core/services/download_manager_service.dart';
 import 'core/services/stream_cache_service.dart';
 import 'core/services/discord_rpc_service.dart';
 import 'core/services/last_fm_service.dart';
+import 'core/services/listenbrainz_service.dart';
 import 'core/services/youtube_service.dart';
 import 'core/services/spotify_service.dart';
 import 'core/recommendations/autoplay_controller.dart';
 import 'core/recommendations/lastfm_recommendation_provider.dart';
+import 'core/recommendations/listenbrainz_recommendation_provider.dart';
 import 'core/recommendations/recommendation_service.dart';
 
 import 'features/app_shell.dart';
@@ -28,6 +30,7 @@ import 'core/services/history_service.dart';
 import 'core/services/import_service.dart';
 import 'core/services/addon_service.dart';
 import 'core/services/lrclib_addon_handler.dart';
+import 'core/services/youtube_music_addon_handler.dart';
 import 'core/services/local_library_service.dart';
 import 'core/services/navigation_service.dart';
 import 'core/utils/platform_helper.dart';
@@ -79,6 +82,11 @@ void main() async {
     final lrcLibHandler = LrcLibAddonHandler();
     addonService.registerUserHandler('net.lrclib', lrcLibHandler);
 
+    final ytMusicHandler =
+        YouTubeMusicAddonHandler(settingsService: settingsService);
+    addonService.registerUserHandler(
+        YouTubeMusicAddonHandler.addonId, ytMusicHandler);
+
     await addonService.initAddons();
 
     // 3. Audio Handler (Background)
@@ -108,12 +116,21 @@ void main() async {
       print('Error initializing LastFM: $e');
     }
 
-    // Recommendations: Last.fm is the only provider for now; more can be
-    // added to this list and picked in Settings.
+    final listenBrainzService = ListenBrainzService();
+    try {
+      await listenBrainzService.init();
+    } catch (e) {
+      print('Error initializing ListenBrainz: $e');
+    }
+
+    // Recommendations: Last.fm & ListenBrainz providers.
     final recommendationService = RecommendationService(
       settings: settingsService,
       addons: addonService,
-      providers: [LastFmRecommendationProvider(lastFmService)],
+      providers: [
+        LastFmRecommendationProvider(lastFmService),
+        ListenBrainzRecommendationProvider(listenBrainzService),
+      ],
     );
     try {
       await recommendationService.init();
@@ -130,7 +147,14 @@ void main() async {
 
     // Don't keep personal recommendations on disk after logout.
     lastFmService.addListener(() {
-      if (!lastFmService.isAuthenticated) {
+      if (!lastFmService.isAuthenticated &&
+          settingsService.recProviderId == 'lastfm') {
+        recommendationService.clearShelves();
+      }
+    });
+    listenBrainzService.addListener(() {
+      if (!listenBrainzService.isAuthenticated &&
+          settingsService.recProviderId == 'listenbrainz') {
         recommendationService.clearShelves();
       }
     });
@@ -147,6 +171,7 @@ void main() async {
       addonService: addonService,
       historyService: historyService,
       lastFmService: lastFmService,
+      listenBrainzService: listenBrainzService,
       discordRpcService: discordRpcService, // Inject
     );
 
@@ -172,6 +197,7 @@ void main() async {
           ChangeNotifierProvider.value(value: streamCacheService),
           ChangeNotifierProvider.value(value: importService),
           ChangeNotifierProvider.value(value: lastFmService),
+          ChangeNotifierProvider.value(value: listenBrainzService),
           ChangeNotifierProvider.value(value: recommendationService),
           ChangeNotifierProvider.value(value: navigationService),
           Provider.value(value: discordRpcService),

@@ -73,7 +73,7 @@ Future<void> downloadTrackWithFeedback(
   final addons = context.read<AddonService>();
   final downloads = context.read<DownloadManagerService>();
   final url = await addons.getStreamUrl(track.addonTrackId ?? track.id,
-      addonId: track.addonId);
+      addonId: track.addonId, preResolvedUrl: track.streamURL);
   if (!context.mounted) return;
   if (url != null) {
     downloads.downloadTrack(track: track, streamUrl: url);

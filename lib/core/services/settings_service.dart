@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../utils/hive/hive_provider.dart';
 import 'dart:convert';
 import '../utils/platform_helper.dart'; // compile-time conditional
 
 import '../models/models.dart';
 import '../models/addon_models.dart';
+import '../theme/app_theme.dart';
 import 'stream_cache/cache_models.dart';
 
 /// Settings service - matches original Python Settings class
@@ -29,6 +31,9 @@ class SettingsService extends ChangeNotifier {
   static const String _keyAddonsList = 'addons_list';
   static const String _keyActiveAddonId = 'active_addon_id';
   static const String _keyRemovedBuiltins = 'removed_builtins';
+  static const String _keyAccentColor = 'accent_color';
+  static const String _keySeekbarStyle = 'seekbar_style';
+
   // Local stream cache
   static const String _keyLocalCacheEnabled = 'local_cache_enabled';
   static const String _keyLocalCacheMaxMb = 'local_cache_max_mb';
@@ -47,6 +52,25 @@ class SettingsService extends ChangeNotifier {
   Future<void> init() async {
     _box = await Hive.openBox(_boxName);
     _initialized = true;
+    AppTheme.accentColor = Color(accentColorValue);
+    notifyListeners();
+  }
+
+  int get accentColorValue =>
+      _box.get(_keyAccentColor, defaultValue: 0xFF1DB954) as int;
+
+  Future<void> setAccentColor(int argb) async {
+    await _box.put(_keyAccentColor, argb);
+    AppTheme.accentColor = Color(argb);
+    notifyListeners();
+  }
+
+  /// Fullscreen player seekbar style: 'normal', 'sleek', 'waveform', 'heartbeat'.
+  String get seekbarStyle =>
+      (_box.get(_keySeekbarStyle, defaultValue: 'normal') as String?) ?? 'normal';
+
+  Future<void> setSeekbarStyle(String style) async {
+    await _box.put(_keySeekbarStyle, style);
     notifyListeners();
   }
 
@@ -328,6 +352,67 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> setActiveAddonId(String id) async {
     await _box.put(_keyActiveAddonId, id);
+  }
+
+  Map<String, dynamic> getAddonSettings(String addonId) {
+    final raw = _box.get('addon_settings_$addonId');
+    if (raw is! String || raw.isEmpty) return {};
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> setAddonSetting(String addonId, String key, dynamic value) async {
+    final map = getAddonSettings(addonId);
+    map[key] = value;
+    await _box.put('addon_settings_$addonId', jsonEncode(map));
+    notifyListeners();
+  }
+
+  String? getAddonDisplayName(String addonId) {
+    final v = _box.get('addon_name_$addonId');
+    return (v is String && v.trim().isNotEmpty) ? v.trim() : null;
+  }
+
+  Future<void> setAddonDisplayName(String addonId, String? name) async {
+    if (name == null || name.trim().isEmpty) {
+      await _box.delete('addon_name_$addonId');
+    } else {
+      await _box.put('addon_name_$addonId', name.trim());
+    }
+    notifyListeners();
+  }
+
+  bool getAddonNotificationsEnabled(String addonId) =>
+      _box.get('addon_notices_$addonId', defaultValue: true) == true;
+
+  Future<void> setAddonNotificationsEnabled(String addonId, bool enabled) async {
+    await _box.put('addon_notices_$addonId', enabled);
+    notifyListeners();
+  }
+
+  bool isAddonEnabled(String addonId) =>
+      _box.get('addon_enabled_$addonId', defaultValue: true) == true;
+
+  Future<void> setAddonEnabled(String addonId, bool enabled) async {
+    await _box.put('addon_enabled_$addonId', enabled);
+    notifyListeners();
+  }
+
+  bool hasSeenAddonNoticeId(String addonId, String noticeId) {
+    final list = _box.get('addon_seen_notices_$addonId');
+    return list is List && list.contains(noticeId);
+  }
+
+  Future<void> markAddonNoticeIdSeen(String addonId, String noticeId) async {
+    final list = List<String>.from(
+        (_box.get('addon_seen_notices_$addonId') as List?) ?? const []);
+    if (!list.contains(noticeId)) {
+      list.add(noticeId);
+      await _box.put('addon_seen_notices_$addonId', list);
+    }
   }
 
   // ========== Removed Built-ins ==========

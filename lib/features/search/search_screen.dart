@@ -222,7 +222,9 @@ class SearchScreenState extends State<SearchScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        final searchAddons = addonService.installedAddons.where((a) => a.supportsSearch).toList();
+        final searchAddons = addonService.installedAddons
+            .where((a) => a.supportsSearch && addonService.isAddonEnabled(a.id))
+            .toList();
         return ListView.builder(
           shrinkWrap: true,
           padding: EdgeInsets.fromLTRB(
@@ -232,16 +234,19 @@ class SearchScreenState extends State<SearchScreen> {
             final addon = searchAddons[index];
             return ListTile(
               leading: addon.icon != null
-                  ? Image.network(
-                      addon.icon!, 
-                      width: 24, 
-                      height: 24,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.extension),
-                    )
+                  ? (addon.icon!.startsWith('assets/')
+                      ? Image.asset(addon.icon!, width: 24, height: 24)
+                      : Image.network(
+                          addon.icon!,
+                          width: 24,
+                          height: 24,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.extension),
+                        ))
                   : const Icon(Icons.extension),
-              title: Text(addon.name),
+              title: Text(addonService.displayNameFor(addon)),
               trailing: addonService.activeAddonId == addon.id
-                  ? const Icon(Icons.check, color: AppTheme.primaryGreen)
+                  ? Icon(Icons.check, color: AppTheme.primaryGreen)
                   : null,
               onTap: () {
                 addonService.setActiveAddon(addon.id);
@@ -259,7 +264,7 @@ class SearchScreenState extends State<SearchScreen> {
 
   Widget _buildResults(bool isDark) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
+      return Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
     }
 
     final addonService = context.watch<AddonService>();

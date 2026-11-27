@@ -149,8 +149,22 @@ double _artistSimilarity(String a, String b) {
 }
 
 /// Scores how well a candidate (an addon search hit) matches [rec]:
-/// 0.6 x title similarity + 0.4 x artist similarity.
-double scoreMatch(RecTrack rec, String candidateTitle, String candidateArtist) {
+/// an exact ISRC match wins outright (1.0); otherwise 0.6 x title + 0.4 x artist.
+double scoreMatch(
+  RecTrack rec,
+  String candidateTitle,
+  String candidateArtist, {
+  String? candidateIsrc,
+}) {
+  final recIsrc = rec.isrc?.trim().toUpperCase();
+  final candIsrc = candidateIsrc?.trim().toUpperCase();
+  if (recIsrc != null &&
+      recIsrc.isNotEmpty &&
+      candIsrc != null &&
+      candIsrc.isNotEmpty &&
+      recIsrc == candIsrc) {
+    return 1.0;
+  }
   final title = _titleSimilarity(
       normalizeForMatch(rec.title), normalizeForMatch(candidateTitle));
   final artist = _artistSimilarity(rec.artist, candidateArtist);

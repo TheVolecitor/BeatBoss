@@ -64,6 +64,7 @@ dependencies:
   just_audio: ^0.10.5
   xml: ^6.6.1
   just_audio_media_kit: ^2.1.0
+  darttubefix: ^1.0.8
   # metadata_god: ^1.1.0
 
 dev_dependencies:
@@ -92,3 +93,6 @@ flutter_icons:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon.png
+    - assets/yt_music_icon.png

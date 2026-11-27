@@ -1,12 +1,14 @@
 import 'package:flutter/foundation.dart'; // kIsWeb
 import '../core/utils/platform_helper.dart'; // compile-time conditional
 
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_theme.dart';
+import '../core/utils/app_toast.dart';
 import '../core/services/audio_player_service.dart';
 import '../core/services/settings_service.dart';
 import '../core/services/addon_service.dart';
@@ -33,6 +35,7 @@ class _AppShellState extends State<AppShell> {
   final List<Widget> _screens = [];
   final GlobalKey<SearchScreenState> _searchKey = GlobalKey<SearchScreenState>();
   late FocusNode _appFocusNode;
+  StreamSubscription? _noticeSub;
 
   // Responsive breakpoint
   static const double _mobileBreakpoint = 768;
@@ -42,6 +45,16 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _appFocusNode = FocusNode();
     _requestNotificationPermission();
+    _noticeSub = context.read<AddonService>().onNotice.listen((event) {
+      if (!mounted) return;
+      final n = event.notice;
+      final prefix = n.title != null ? '${n.title}: ' : '';
+      AppToast.show(
+        context,
+        '${event.addon.name} — $prefix${n.message}',
+        isError: n.level == 'error' || n.level == 'warning',
+      );
+    });
 
     _screens.addAll([
       HomeScreen(onNavigate: _onNavTap),
@@ -106,6 +119,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    _noticeSub?.cancel();
     _appFocusNode.dispose();
     super.dispose();
   }
@@ -303,66 +317,95 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildSidebar(bool isDark) {
     return Container(
-      width: 260, // Expanded width
-      color: isDark ? AppTheme.darkSidebar : AppTheme.lightSidebar,
+      width: 248,
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSidebar : AppTheme.lightSidebar,
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.06),
+            width: 1,
+          ),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Logo
+          // Brand Header with BeatBoss Logo
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(18, 22, 18, 16),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen,
-                    borderRadius: BorderRadius.circular(8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.asset(
+                    'assets/icon.png',
+                    width: 38,
+                    height: 38,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 38,
+                      height: 38,
+                      color: AppTheme.primaryGreen,
+                      child: const Icon(Icons.music_note, color: Colors.black),
+                    ),
                   ),
-                  child: const Icon(Icons.music_note, color: Colors.black),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   'BeatBoss',
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 10),
-
-          // Helper for Nav Items
-          ..._buildNavItems(isDark),
+          // Nav Items
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              children: _buildNavItems(isDark),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _sidebarSectionLabel(String text, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 6),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: isDark ? Colors.white38 : Colors.black38,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.1,
+        ),
       ),
     );
   }
 
   List<Widget> _buildNavItems(bool isDark) {
     return [
-      _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home', isDark),
-      _buildNavItem(1, Icons.library_music_outlined, Icons.library_music, 'Library', isDark),
-      _buildNavItem(3, Icons.search, Icons.search, 'Search', isDark),
+      _sidebarSectionLabel('DISCOVER', isDark),
+      _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Home', isDark),
+      _buildNavItem(3, Icons.search_rounded, Icons.search_rounded, 'Search', isDark),
 
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Divider(color: isDark ? Colors.white10 : Colors.black12),
-      ),
-
-      // Create Library Action
+      _sidebarSectionLabel('LIBRARY', isDark),
+      _buildNavItem(1, Icons.library_music_outlined, Icons.library_music_rounded, 'Your Library', isDark),
       _buildActionItem(Icons.add_box_outlined, 'Create Library', isDark,
           onTap: _showCreateLibraryDialog),
 
-      _buildNavItem(2, Icons.settings_outlined, Icons.settings, 'Settings', isDark),
-
-      const Spacer(),
-      const SizedBox(height: 20),
+      _sidebarSectionLabel('SYSTEM', isDark),
+      _buildNavItem(2, Icons.settings_outlined, Icons.settings_rounded, 'Settings', isDark),
     ];
   }
 
@@ -370,37 +413,55 @@ class _AppShellState extends State<AppShell> {
       String label, bool isDark) {
     final isSelected = _selectedIndex == index;
 
-    return InkWell(
-      onTap: () => _onNavTap(index),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryGreen.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isSelected ? activeIcon : icon,
-              color: isSelected
-                  ? AppTheme.primaryGreen
-                  : (isDark ? Colors.white70 : Colors.black54),
-              size: 22,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Material(
+        color: isSelected
+            ? AppTheme.primaryGreen.withValues(alpha: isDark ? 0.16 : 0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _onNavTap(index),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 3,
+                  height: isSelected ? 18 : 0,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Icon(
+                  isSelected ? activeIcon : icon,
+                  color: isSelected
+                      ? AppTheme.primaryGreen
+                      : (isDark ? Colors.white70 : Colors.black54),
+                  size: 21,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isSelected
+                          ? (isDark ? Colors.white : Colors.black)
+                          : (isDark ? Colors.white70 : Colors.black54),
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? (isDark ? Colors.white : Colors.black)
-                    : (isDark ? Colors.white70 : Colors.black54),
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -408,26 +469,39 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildActionItem(IconData icon, String label, bool isDark,
       {required VoidCallback onTap, Color? color}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color: color ?? (isDark ? Colors.white70 : Colors.black54),
-              size: 22,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 11),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: color ?? (isDark ? Colors.white70 : Colors.black54),
+                  size: 21,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color ?? (isDark ? Colors.white70 : Colors.black54),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                color: color ?? (isDark ? Colors.white70 : Colors.black54),
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -441,11 +515,11 @@ class _AppShellState extends State<AppShell> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.add_box, color: AppTheme.primaryGreen),
-            SizedBox(width: 10),
-            Text('New Library'),
+            const SizedBox(width: 10),
+            const Text('New Library'),
           ],
         ),
         content: TextField(
@@ -543,12 +617,21 @@ class _AppShellState extends State<AppShell> {
               size: 26,
             ),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? (isDark ? Colors.white : Colors.black) : inactiveColor,
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isSelected
+                        ? (isDark ? Colors.white : Colors.black)
+                        : inactiveColor,
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  ),
+                ),
               ),
             ),
           ],

@@ -11,6 +11,8 @@ class RecTrack {
   final String? album;
   final String? imageUrl;
   final double? match;
+  final String? isrc;
+  final int? durationMs;
 
   const RecTrack({
     required this.title,
@@ -18,6 +20,8 @@ class RecTrack {
     this.album,
     this.imageUrl,
     this.match,
+    this.isrc,
+    this.durationMs,
   });
 
   /// Stable identity used for de-duplication and resolve caching.
@@ -29,6 +33,8 @@ class RecTrack {
         'album': album,
         'imageUrl': imageUrl,
         'match': match,
+        if (isrc != null) 'isrc': isrc,
+        if (durationMs != null) 'durationMs': durationMs,
       };
 
   factory RecTrack.fromJson(Map<String, dynamic> json) => RecTrack(
@@ -37,6 +43,10 @@ class RecTrack {
         album: json['album']?.toString(),
         imageUrl: json['imageUrl']?.toString(),
         match: (json['match'] as num?)?.toDouble(),
+        isrc: (json['isrc'] is String && (json['isrc'] as String).trim().isNotEmpty)
+            ? (json['isrc'] as String).trim()
+            : null,
+        durationMs: (json['durationMs'] as num?)?.toInt(),
       );
 }
 

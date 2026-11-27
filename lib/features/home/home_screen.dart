@@ -5,6 +5,7 @@ import '../../core/recommendations/recommendation_service.dart';
 import '../../core/services/addon_service.dart';
 import '../../core/services/history_service.dart';
 import '../../core/services/last_fm_service.dart';
+import '../../core/services/listenbrainz_service.dart';
 import '../../core/services/settings_service.dart';
 import 'home_controller.dart';
 import 'widgets/home_header.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen>
       recs: context.read<RecommendationService>(),
       settings: context.read<SettingsService>(),
       lastFm: context.read<LastFmService>(),
+      listenBrainz: context.read<ListenBrainzService>(),
       addons: context.read<AddonService>(),
       history: context.read<HistoryService>(),
     );
@@ -59,7 +61,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     final history = context.watch<HistoryService>();
-    final lastFm = context.watch<LastFmService>();
+    context.watch<LastFmService>();
+    context.watch<ListenBrainzService>();
     final recent = history.recentlyPlayed.take(10).toList();
 
     return RefreshIndicator(
@@ -80,9 +83,12 @@ class _HomeScreenState extends State<HomeScreen>
                     const HomeHeader(),
                     if (loggedOut &&
                         c.sourceEnabled &&
-                        !lastFm.isAuthenticated) ...[
+                        !c.recs.active.isLoggedIn) ...[
                       const SizedBox(height: 20),
-                      ConnectBanner(onConnect: () => _goTo(2)),
+                      ConnectBanner(
+                        providerName: c.recs.active.displayName,
+                        onConnect: () => _goTo(2),
+                      ),
                     ],
                     const SizedBox(height: 24),
                     QuickPicksSection(controller: c, recent: recent),

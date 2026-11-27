@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 
 import '../models/addon_models.dart';
 import '../models/models.dart';
+import '../recommendations/rec_models.dart';
 import 'settings_service.dart';
 
 
@@ -30,6 +32,14 @@ class AddonService extends ChangeNotifier {
   // Currently active addon ID for search
   String? _activeAddonId;
 
+  // Broadcast stream of addon notices (manifest, stream 503/429, etc.)
+  final StreamController<({AddonManifest addon, AddonNotice notice})>
+      _noticeController = StreamController.broadcast();
+  Stream<({AddonManifest addon, AddonNotice notice})> get onNotice =>
+      _noticeController.stream;
+
+  final Map<String, DateTime> _recentNotices = {};
+
   final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(minutes: 1),
@@ -46,22 +56,89 @@ class AddonService extends ChangeNotifier {
 
   List<AddonManifest> get installedAddons => List.unmodifiable(_installedAddons);
 
+  bool isAddonEnabled(String addonId) => _settings.isAddonEnabled(addonId);
+
+  Future<void> setAddonEnabled(String addonId, bool enabled) async {
+    await _settings.setAddonEnabled(addonId, enabled);
+    if (!enabled && _activeAddonId == addonId) {
+      final fallback = _installedAddons
+          .where((a) => a.id != addonId && isAddonEnabled(a.id) && a.supportsSearch)
+          .firstOrNull;
+      _activeAddonId = fallback?.id;
+      if (_activeAddonId != null) {
+        await _settings.setActiveAddonId(_activeAddonId!);
+      }
+    } else if (enabled && _activeAddonId == null) {
+      final target = _getManifest(addonId);
+      if (target != null && target.supportsSearch) {
+        _activeAddonId = addonId;
+        await _settings.setActiveAddonId(addonId);
+      }
+    }
+    notifyListeners();
+  }
+
   String? get activeAddonId => _activeAddonId;
 
   AddonManifest? get activeAddon {
-    if (_activeAddonId == null) return null;
-    try {
-      return _installedAddons.firstWhere((a) => a.id == _activeAddonId);
-    } catch (_) {
-      return _installedAddons.isNotEmpty ? _installedAddons.first : null;
+    if (_activeAddonId != null) {
+      final match = _installedAddons
+          .where((a) => a.id == _activeAddonId && isAddonEnabled(a.id))
+          .firstOrNull;
+      if (match != null) return match;
     }
+    return _installedAddons.where((a) => isAddonEnabled(a.id)).firstOrNull;
   }
 
   bool get hasSearchCapableAddon =>
-      _installedAddons.any((a) => a.supportsSearch);
+      _installedAddons.any((a) => isAddonEnabled(a.id) && a.supportsSearch);
+
+  String displayNameFor(AddonManifest manifest) =>
+      _settings.getAddonDisplayName(manifest.id) ?? manifest.name;
 
   List<AddonManifest> getAddonsForResource(String resource) {
     return _installedAddons.where((a) => a.resources.contains(resource)).toList();
+  }
+
+  /// Query parameters for declared addon settings (sent verbatim on every request).
+  Map<String, dynamic> _settingsQuery(AddonManifest manifest) {
+    if (manifest.settings.isEmpty) return const {};
+    final stored = _settings.getAddonSettings(manifest.id);
+    final params = <String, dynamic>{};
+    for (final field in manifest.settings) {
+      final val = field.perNetwork
+          ? (stored['${field.key}_wifi'] ?? stored[field.key] ?? field.defaultValue)
+          : (stored[field.key] ?? field.defaultValue);
+      if (val != null) params[field.key] = val.toString();
+    }
+    return params;
+  }
+
+  void _emitNoticeFromData(AddonManifest manifest, dynamic rawData,
+      {bool isManifest = false}) {
+    if (!manifest.supportsNotifications ||
+        !_settings.getAddonNotificationsEnabled(manifest.id)) {
+      return;
+    }
+    final map = _toMap(rawData);
+    if (map['notice'] is! Map) return;
+    final notice = AddonNotice.fromJson(
+        Map<String, dynamic>.from(map['notice'] as Map));
+    if (notice.message.isEmpty) return;
+
+    if (isManifest && notice.id != null) {
+      if (_settings.hasSeenAddonNoticeId(manifest.id, notice.id!)) return;
+      _settings.markAddonNoticeIdSeen(manifest.id, notice.id!);
+    } else {
+      final dedupeKey = '${manifest.id}:${notice.message}';
+      final last = _recentNotices[dedupeKey];
+      final now = DateTime.now();
+      if (last != null && now.difference(last) < const Duration(seconds: 60)) {
+        return;
+      }
+      _recentNotices[dedupeKey] = now;
+    }
+    _noticeController.add((addon: manifest, notice: notice));
   }
 
   // ========== Init ==========
@@ -162,6 +239,7 @@ class AddonService extends ChangeNotifier {
 
     _installedAddons.add(manifest);
     await _settings.saveAddons(_installedAddons);
+    _emitNoticeFromData(manifest, data, isManifest: true);
 
     // Auto-activate if first search-capable addon
     if (_activeAddonId == null && manifest.supportsSearch) {
@@ -171,6 +249,47 @@ class AddonService extends ChangeNotifier {
 
     notifyListeners();
     return manifest;
+  }
+
+  /// Re-fetch and reinstall an existing addon's manifest in place (preserving
+  /// its priority order and user settings).
+  Future<AddonManifest> reloadAddon(String addonId) async {
+    final index = _installedAddons.indexWhere((a) => a.id == addonId);
+    if (index < 0) throw Exception('Addon not found');
+    final existing = _installedAddons[index];
+
+    if (existing.addonType == AddonType.user) {
+      final handler = _userHandlers[addonId];
+      if (handler == null) return existing;
+      final fresh = handler.manifest;
+      _installedAddons[index] = fresh;
+      await _settings.saveAddons(_installedAddons);
+      notifyListeners();
+      return fresh;
+    }
+
+    final baseUrl = existing.baseUrl;
+    if (baseUrl == null || baseUrl.isEmpty) {
+      throw Exception('Addon has no URL to reload');
+    }
+
+    final manifestUrl = '$baseUrl/manifest.json';
+    final response = await _dio.get(manifestUrl);
+    if (response.statusCode != 200 || response.data == null) {
+      throw Exception('Failed to fetch manifest from $manifestUrl');
+    }
+
+    final data = _toMap(response.data);
+    if (data.isEmpty) {
+      throw Exception('Failed to parse manifest: Invalid format or empty response');
+    }
+
+    final fresh = AddonManifest.fromEclipseJson(data, baseUrl: baseUrl);
+    _installedAddons[index] = fresh;
+    await _settings.saveAddons(_installedAddons);
+    _emitNoticeFromData(fresh, data, isManifest: true);
+    notifyListeners();
+    return fresh;
   }
 
   /// Preview a manifest from a URL without installing it.
@@ -225,6 +344,7 @@ class AddonService extends ChangeNotifier {
       (a) => a.id == id,
       orElse: () => throw Exception('Addon $id not found'),
     );
+    if (!isAddonEnabled(manifest.id)) return null;
 
     if (manifest.addonType == AddonType.user) {
       return _userHandlers[id]?.search(query); // User handlers handle limit internally if they want
@@ -239,20 +359,113 @@ class AddonService extends ChangeNotifier {
       final response = await _dio.get(
         '${manifest.baseUrl}/search',
         queryParameters: {
+          ..._settingsQuery(manifest),
           'q': query,
           if (limit != null) 'limit': limit,
         },
       );
       if (response.statusCode == 200 && response.data != null) {
+        _emitNoticeFromData(manifest, response.data);
         final data = _toMap(response.data);
         if (data.isNotEmpty) {
           return AddonSearchResult.fromJson(data, addonId: manifest.id);
         }
       }
+    } on DioException catch (e) {
+      if (e.response?.data != null) {
+        _emitNoticeFromData(manifest, e.response!.data);
+      }
+      print('[AddonService] Server search error for ${manifest.id}: $e');
     } catch (e) {
       print('[AddonService] Server search error for ${manifest.id}: $e');
     }
     return null;
+  }
+
+  // ========== ISRC & Exact Resolve ==========
+
+  /// Calls GET /resolve-isrc?isrc={isrc} on [addonId] (or active addon).
+  /// Returns the addon trackId if found, or null if unsupported / not found.
+  Future<String?> resolveIsrc(String isrc, {String? addonId}) async {
+    final clean = isrc.trim();
+    if (clean.isEmpty) return null;
+    final id = addonId ?? _activeAddonId;
+    if (id == null) return null;
+    final manifest = _getManifest(id);
+    if (manifest == null ||
+        !isAddonEnabled(manifest.id) ||
+        manifest.addonType != AddonType.server ||
+        !manifest.supportsIsrc) {
+      return null;
+    }
+    try {
+      final response = await _dio.get(
+        '${manifest.baseUrl}/resolve-isrc',
+        queryParameters: {
+          ..._settingsQuery(manifest),
+          'isrc': clean,
+        },
+        options: Options(validateStatus: (s) => s != null && s < 500),
+      );
+      if (response.data != null) _emitNoticeFromData(manifest, response.data);
+      if (response.statusCode == 200 && response.data != null) {
+        final data = _toMap(response.data);
+        final trackId = (data['trackId'] ?? data['id'])?.toString().trim();
+        return (trackId != null && trackId.isNotEmpty) ? trackId : null;
+      }
+    } catch (e) {
+      print('[AddonService] resolve-isrc error for ${manifest.id}: $e');
+    }
+    return null;
+  }
+
+  /// Calls GET /resolve on [addonId] (or active addon) if it declares "resolve".
+  /// Returns `(handled: true, track: ...)` when the addon implements /resolve
+  /// (even when track is null because the addon confirmed it doesn't have it).
+  Future<({bool handled, AddonTrack? track})> resolveTrack(
+    RecTrack rec, {
+    String? addonId,
+  }) async {
+    final id = addonId ?? _activeAddonId;
+    if (id == null) return (handled: false, track: null);
+    final manifest = _getManifest(id);
+    if (manifest == null ||
+        !isAddonEnabled(manifest.id) ||
+        manifest.addonType != AddonType.server ||
+        !manifest.supportsResolve) {
+      return (handled: false, track: null);
+    }
+    try {
+      final response = await _dio.get(
+        '${manifest.baseUrl}/resolve',
+        queryParameters: {
+          ..._settingsQuery(manifest),
+          if (rec.isrc != null && rec.isrc!.isNotEmpty) 'isrc': rec.isrc,
+          'title': rec.title,
+          'artist': rec.artist,
+          if (rec.durationMs != null) 'durationMs': rec.durationMs,
+        },
+        options: Options(validateStatus: (s) => s != null && s < 500),
+      );
+      if (response.data != null) _emitNoticeFromData(manifest, response.data);
+      if (response.statusCode == 200 && response.data != null) {
+        final data = _toMap(response.data);
+        final item = data['item'];
+        if (item is Map) {
+          return (
+            handled: true,
+            track: AddonTrack.fromJson(
+              Map<String, dynamic>.from(item),
+              addonId: manifest.id,
+            ),
+          );
+        }
+        return (handled: true, track: null);
+      }
+    } catch (e) {
+      print('[AddonService] resolve error for ${manifest.id}: $e');
+    }
+    return (handled: false, track: null);
   }
 
   // ========== Stream Resolution ==========
@@ -269,11 +482,17 @@ class AddonService extends ChangeNotifier {
   }
 
   /// Resolve a full stream result (url + metadata) for a track.
-  Future<AddonStreamResult?> getStreamResult(String trackId, {String? addonId}) async {
+  /// When [isrc] is provided, fallback addons that support ISRC lookup resolve
+  /// by ISRC before attempting to stream.
+  Future<AddonStreamResult?> getStreamResult(
+    String trackId, {
+    String? addonId,
+    String? isrc,
+  }) async {
     // 1. If explicit addon provided, try it first
     if (addonId != null) {
       final manifest = _getManifest(addonId);
-      if (manifest != null && manifest.supportsStream) {
+      if (manifest != null && isAddonEnabled(manifest.id) && manifest.supportsStream) {
         final res = await _tryStreamResult(manifest, trackId);
         if (res != null) return res;
       }
@@ -282,8 +501,17 @@ class AddonService extends ChangeNotifier {
     // 2. Otherwise iterate top-to-bottom prioritizing based on reorderable list
     for (final manifest in _installedAddons) {
       if (addonId != null && manifest.id == addonId) continue;
-      if (manifest.supportsStream) {
-        final res = await _tryStreamResult(manifest, trackId);
+      if (isAddonEnabled(manifest.id) && manifest.supportsStream) {
+        var targetId = trackId;
+        if (addonId != null &&
+            isrc != null &&
+            isrc.trim().isNotEmpty &&
+            manifest.supportsIsrc) {
+          final resolved = await resolveIsrc(isrc, addonId: manifest.id);
+          if (resolved == null) continue;
+          targetId = resolved;
+        }
+        final res = await _tryStreamResult(manifest, targetId);
         if (res != null) return res;
       }
     }
@@ -301,15 +529,35 @@ class AddonService extends ChangeNotifier {
 
   Future<AddonStreamResult?> _serverGetStreamResult(
       AddonManifest manifest, String trackId) async {
-    try {
-      final response =
-          await _dio.get('${manifest.baseUrl}/stream/$trackId');
-      if (response.statusCode == 200 && response.data != null) {
-        final data = _toMap(response.data);
-        return AddonStreamResult.fromJson(data);
+    const maxAttempts = 4;
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        final response = await _dio.get(
+          '${manifest.baseUrl}/stream/$trackId',
+          queryParameters: _settingsQuery(manifest),
+          options: Options(
+            validateStatus: (s) =>
+                s != null && (s == 200 || s == 503 || (s >= 400 && s < 500)),
+          ),
+        );
+        if (response.data != null) _emitNoticeFromData(manifest, response.data);
+
+        if (response.statusCode == 200 && response.data != null) {
+          final data = _toMap(response.data);
+          return AddonStreamResult.fromJson(data);
+        }
+        if (response.statusCode == 503 && attempt < maxAttempts - 1) {
+          final retryRaw = response.headers.value('retry-after');
+          final retrySecs =
+              (int.tryParse(retryRaw ?? '') ?? 5).clamp(1, 30);
+          await Future.delayed(Duration(seconds: retrySecs));
+          continue;
+        }
+        return null;
+      } catch (e) {
+        print('[AddonService] Server stream error for ${manifest.id}/$trackId: $e');
+        return null;
       }
-    } catch (e) {
-      print('[AddonService] Server stream error for ${manifest.id}/$trackId: $e');
     }
     return null;
   }
@@ -317,28 +565,75 @@ class AddonService extends ChangeNotifier {
 
   // ========== Catalog Endpoints ==========
 
-  /// Fetch catalog (tracks/albums/artists) to populate the home screen
+  /// Fetch catalog (tracks/albums/artists/playlists) to populate the home screen
   Future<AddonSearchResult?> getCatalog({String? addonId}) async {
-    // Iterate top-to-bottom prioritizing based on reorderable list
     for (final manifest in _installedAddons) {
       if (addonId != null && manifest.id != addonId) continue;
-      
-      if (manifest.supportsCatalog) {
-        if (manifest.addonType == AddonType.user) {
-          // If the user handler supports catalog (extend UserAddonHandler if needed)
-          // For now we'll just skip to HTTP servers or assume user handlers don't implement it yet
-        } else {
-          try {
-            final response = await _dio.get('${manifest.baseUrl}/catalog');
-            if (response.statusCode == 200 && response.data != null) {
-              final data = _toMap(response.data);
-              if (data.isNotEmpty) {
-                return AddonSearchResult.fromJson(data, addonId: manifest.id);
+      if (!isAddonEnabled(manifest.id)) continue;
+
+      if (manifest.supportsCatalog && manifest.addonType == AddonType.server) {
+        // Eclipse spec: manifest declares `catalogs` rows -> GET /catalog/{id}?skip=0
+        if (manifest.catalogs.isNotEmpty) {
+          final tracks = <AddonTrack>[];
+          final albums = <AddonAlbum>[];
+          final artists = <AddonArtist>[];
+          final playlists = <AddonPlaylist>[];
+          for (final cat in manifest.catalogs) {
+            try {
+              final response = await _dio.get(
+                '${manifest.baseUrl}/catalog/${cat.id}',
+                queryParameters: {
+                  ..._settingsQuery(manifest),
+                  'skip': 0,
+                },
+              );
+              if (response.statusCode == 200 && response.data != null) {
+                _emitNoticeFromData(manifest, response.data);
+                final data = _toMap(response.data);
+                final items = (data['items'] as List<dynamic>?) ?? const [];
+                for (final raw in items.whereType<Map>()) {
+                  final map = Map<String, dynamic>.from(raw);
+                  final itemType = map['type']?.toString() ?? cat.type;
+                  switch (itemType) {
+                    case 'album':
+                      albums.add(AddonAlbum.fromJson(map, addonId: manifest.id));
+                    case 'artist':
+                      artists.add(AddonArtist.fromJson(map, addonId: manifest.id));
+                    case 'playlist':
+                      playlists.add(AddonPlaylist.fromJson(map, addonId: manifest.id));
+                    default:
+                      tracks.add(AddonTrack.fromJson(map, addonId: manifest.id));
+                  }
+                }
               }
+            } catch (e) {
+              print('[AddonService] Catalog ${cat.id} error for ${manifest.id}: $e');
             }
-          } catch (e) {
-            print('[AddonService] Server catalog error for ${manifest.id}: $e');
           }
+          final result = AddonSearchResult(
+            tracks: tracks,
+            albums: albums,
+            artists: artists,
+            playlists: playlists,
+          );
+          if (!result.isEmpty) return result;
+        }
+
+        // Legacy fallback: GET /catalog
+        try {
+          final response = await _dio.get(
+            '${manifest.baseUrl}/catalog',
+            queryParameters: _settingsQuery(manifest),
+          );
+          if (response.statusCode == 200 && response.data != null) {
+            _emitNoticeFromData(manifest, response.data);
+            final data = _toMap(response.data);
+            if (data.isNotEmpty) {
+              return AddonSearchResult.fromJson(data, addonId: manifest.id);
+            }
+          }
+        } catch (e) {
+          print('[AddonService] Server catalog error for ${manifest.id}: $e');
         }
       }
     }
@@ -355,8 +650,12 @@ class AddonService extends ChangeNotifier {
       return _userHandlers[id]?.getAlbumDetail(albumId);
     }
     try {
-      final response = await _dio.get('${manifest.baseUrl}/album/$albumId');
+      final response = await _dio.get(
+        '${manifest.baseUrl}/album/$albumId',
+        queryParameters: _settingsQuery(manifest),
+      );
       if (response.statusCode == 200 && response.data != null) {
+        _emitNoticeFromData(manifest, response.data);
         final data = _toMap(response.data);
         final albumData = data['album'] ?? data;
         return AddonAlbum.fromJson(albumData, addonId: id);
@@ -377,8 +676,12 @@ class AddonService extends ChangeNotifier {
       return _userHandlers[id]?.getArtistDetail(artistId);
     }
     try {
-      final response = await _dio.get('${manifest.baseUrl}/artist/$artistId');
+      final response = await _dio.get(
+        '${manifest.baseUrl}/artist/$artistId',
+        queryParameters: _settingsQuery(manifest),
+      );
       if (response.statusCode == 200 && response.data != null) {
+        _emitNoticeFromData(manifest, response.data);
         final data = _toMap(response.data);
         final artistData = data['artist'] ?? data;
         return AddonArtist.fromJson(artistData, addonId: id);
@@ -399,8 +702,12 @@ class AddonService extends ChangeNotifier {
       return _userHandlers[id]?.getPlaylistDetail(playlistId);
     }
     try {
-      final response = await _dio.get('${manifest.baseUrl}/playlist/$playlistId');
+      final response = await _dio.get(
+        '${manifest.baseUrl}/playlist/$playlistId',
+        queryParameters: _settingsQuery(manifest),
+      );
       if (response.statusCode == 200 && response.data != null) {
+        _emitNoticeFromData(manifest, response.data);
         final data = _toMap(response.data);
         final playlistData = data['playlist'] ?? data;
         return AddonPlaylist.fromJson(playlistData, addonId: id);
@@ -427,7 +734,7 @@ class AddonService extends ChangeNotifier {
     // 2. Iterate top-to-bottom over installed addons supporting lyrics
     for (final addon in _installedAddons) {
       if (addonId != null && addon.id == addonId) continue;
-      if (addon.supportsLyrics) {
+      if (isAddonEnabled(addon.id) && addon.supportsLyrics) {
         final lyrics = await _fetchLyricsFromAddon(addon.id, artist, title, album: album, duration: duration);
         if (lyrics != null && lyrics.isNotEmpty) {
           return lyrics;

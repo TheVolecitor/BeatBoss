@@ -324,7 +324,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           const SizedBox(height: 20),
           Expanded(
             child: _isLoadingAddon
-                ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
+                ? Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
                 : _addonLibraries.isEmpty
                         ? Center(
                             child: Column(
@@ -541,7 +541,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           const SizedBox(height: 20),
           Expanded(
             child: _libraryTracks == null
-                ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
+                ? Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
                 : _libraryTracks!.isEmpty
                     ? Center(
                         child: Text('No tracks in this library',
@@ -576,7 +576,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.add_box, color: AppTheme.primaryGreen),
+            Icon(Icons.add_box, color: AppTheme.primaryGreen),
             const SizedBox(width: 10),
             Text(isLocal ? 'New Local Library' : 'New Remote Library'),
           ],
@@ -618,11 +618,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.edit, color: AppTheme.primaryGreen),
-            SizedBox(width: 10),
-            Text('Edit Library'),
+            const SizedBox(width: 10),
+            const Text('Edit Library'),
           ],
         ),
         content: TextField(

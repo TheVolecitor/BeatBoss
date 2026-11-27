@@ -92,13 +92,26 @@ class TrackShelfSection extends StatelessWidget {
               : const SizedBox.shrink();
         }
         final cards = trackCards(context, shelf);
-        if (cards.isEmpty && !shelf.isResolving) return const SizedBox.shrink();
+        final hasUnpreviewed = shelf.limit != null &&
+            (shelf.shelf?.tracks.length ?? 0) > shelf.limit!;
+        if (cards.isEmpty && !shelf.isResolving && !hasUnpreviewed) {
+          return const SizedBox.shrink();
+        }
         return ShelfSection(
           title: title ?? shelf.title,
           subtitle: shelf.subtitle,
           height: kCardRowHeight,
           onSeeAll: () => openMix(context, shelf, loadMore: loadMore),
-          children: cards,
+          children: cards.isNotEmpty
+              ? cards
+              : [
+                  Center(
+                    child: OutlinedButton(
+                      onPressed: () => openMix(context, shelf, loadMore: loadMore),
+                      child: const Text('Explore all tracks'),
+                    ),
+                  ),
+                ],
         );
       },
     );

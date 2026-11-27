@@ -411,7 +411,7 @@ class _AddonDetailScreenState extends State<AddonDetailScreen> {
 
   Widget _buildTracksList(bool isDark) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
+      return Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
     } else if (_error != null) {
       return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
     } else if (_tracks.isEmpty) {

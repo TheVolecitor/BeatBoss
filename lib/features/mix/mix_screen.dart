@@ -42,8 +42,14 @@ class _MixScreenState extends State<MixScreen> {
       ..setShelf(widget.shelf);
   }
 
+  VoidCallback? _mixTailListener;
+
   @override
   void dispose() {
+    if (_mixTailListener != null) {
+      _resolved.removeListener(_mixTailListener!);
+      _mixTailListener = null;
+    }
     _resolved.dispose();
     super.dispose();
   }
@@ -52,6 +58,10 @@ class _MixScreenState extends State<MixScreen> {
     if (_starting) return;
     setState(() => _starting = true);
     final player = context.read<AudioPlayerService>();
+    if (_mixTailListener != null) {
+      _resolved.removeListener(_mixTailListener!);
+      _mixTailListener = null;
+    }
     try {
       final tracks =
           await _resolved.playableWhenReady(min: from == null ? 8 : 1);
@@ -68,6 +78,40 @@ class _MixScreenState extends State<MixScreen> {
             from == null ? 0 : tracks.indexWhere((t) => t.id == from.id);
         await player.playAll(tracks, startIndex: start < 0 ? 0 : start);
       }
+      if (!mounted || !_resolved.isResolving) return;
+      final submitted = List<Track>.of(tracks);
+      void onMoreResolved() {
+        if (!mounted) {
+          _resolved.removeListener(onMoreResolved);
+          return;
+        }
+        final current = player.currentTrack;
+        final queue = player.queue;
+        final stillOwns = current != null &&
+            submitted.any((t) => identical(t, current)) &&
+            submitted.every((s) => queue.any((q) => identical(q, s)));
+        if (!stillOwns) {
+          _resolved.removeListener(onMoreResolved);
+          if (identical(_mixTailListener, onMoreResolved)) {
+            _mixTailListener = null;
+          }
+          return;
+        }
+        for (final t in _resolved.playable) {
+          if (!submitted.any((s) => identical(s, t))) {
+            submitted.add(t);
+            player.addToQueue(t);
+          }
+        }
+        if (!_resolved.isResolving) {
+          _resolved.removeListener(onMoreResolved);
+          if (identical(_mixTailListener, onMoreResolved)) {
+            _mixTailListener = null;
+          }
+        }
+      }
+      _mixTailListener = onMoreResolved;
+      _resolved.addListener(onMoreResolved);
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -97,7 +141,8 @@ class _MixScreenState extends State<MixScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 768;
+    final size = MediaQuery.of(context).size;
+    final isDesktop = size.width >= 768 && size.height >= 520;
 
     return Scaffold(
       extendBodyBehindAppBar: !isDesktop,

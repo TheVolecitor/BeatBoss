@@ -24,7 +24,7 @@ class StreamCacheService extends ChangeNotifier {
 
   List<Track> get cachedTracks => const [];
 
-  void remove(Track track) {}
+  bool remove(Track track) => true;
 
   void invalidate(Track track) {}
 

@@ -14,12 +14,15 @@ import '../models/models.dart';
 /// always land before the autoplay section.
 class QueueModel {
   List<Track> _tracks = [];
+  List<int> _ids = [];
+  int _nextId = 0;
   int _current = -1;
   int? _autoplayStart;
 
   /// Snapshot of the user section taken when shuffle was switched on. Null
   /// while not shuffled.
   List<Track>? _shuffleOriginal;
+  List<int>? _shuffleOriginalIds;
 
   UnmodifiableListView<Track> get tracks => UnmodifiableListView(_tracks);
   int get length => _tracks.length;
@@ -52,15 +55,23 @@ class QueueModel {
   }) {
     _autoplayStart = null;
     _shuffleOriginal = null;
+    _shuffleOriginalIds = null;
+    final newIds = List<int>.generate(tracks.length, (_) => _nextId++);
     if (shuffled && index >= 0 && index < tracks.length) {
       final first = tracks[index];
-      final rest = [...tracks]..removeAt(index);
-      rest.shuffle(random);
+      final firstId = newIds[index];
+      final restIndices = [
+        for (var i = 0; i < tracks.length; i++)
+          if (i != index) i,
+      ]..shuffle(random);
       _shuffleOriginal = List.of(tracks);
-      _tracks = [first, ...rest];
+      _shuffleOriginalIds = newIds;
+      _tracks = [first, for (final i in restIndices) tracks[i]];
+      _ids = [firstId, for (final i in restIndices) newIds[i]];
       _current = 0;
     } else {
       _tracks = List.of(tracks);
+      _ids = newIds;
       _current = index;
     }
   }
@@ -75,7 +86,10 @@ class QueueModel {
     if (start == null) return 0;
     final from = max(start, _current + 1);
     final removed = max(0, _tracks.length - from);
-    if (removed > 0) _tracks.removeRange(from, _tracks.length);
+    if (removed > 0) {
+      _tracks.removeRange(from, _tracks.length);
+      _ids.removeRange(from, _ids.length);
+    }
     _autoplayStart = null;
     return removed;
   }
@@ -89,15 +103,18 @@ class QueueModel {
       return;
     }
     _tracks = [keep];
+    _ids = [_ids[_current]];
     _current = 0;
     _autoplayStart = null;
     _shuffleOriginal = null;
+    _shuffleOriginalIds = null;
   }
 
   /// Drops everything after the current track (including autoplay tracks).
   void removeUpcoming() {
     if (_current < 0 || _current >= _tracks.length) return;
     _tracks.removeRange(_current + 1, _tracks.length);
+    _ids.removeRange(_current + 1, _ids.length);
     _autoplayStart = null;
   }
 
@@ -114,11 +131,13 @@ class QueueModel {
     if (tracks.isEmpty) return;
     _autoplayStart ??= _tracks.length;
     _tracks.addAll(tracks);
+    _ids.addAll(List<int>.generate(tracks.length, (_) => _nextId++));
   }
 
   void _insert(int index, Track track) {
     final i = index.clamp(0, _tracks.length);
     _tracks.insert(i, track);
+    _ids.insert(i, _nextId++);
     final start = _autoplayStart;
     // Everything up to and including the new track belongs to the user.
     if (start != null) _autoplayStart = max(start, i) + 1;
@@ -131,6 +150,7 @@ class QueueModel {
     if (index < 0 || index >= _tracks.length) return false;
     final wasCurrent = index == _current;
     _tracks.removeAt(index);
+    _ids.removeAt(index);
     if (index < _current) _current--;
     final start = _autoplayStart;
     if (start != null && index < start) _autoplayStart = start - 1;
@@ -151,8 +171,10 @@ class QueueModel {
     final movedFromAutoplay = oldStart != null && oldIndex >= oldStart;
 
     final track = _tracks.removeAt(oldIndex);
+    final id = _ids.removeAt(oldIndex);
     final target = min(newIndex, _tracks.length);
     _tracks.insert(target, track);
+    _ids.insert(target, id);
 
     if (_current == oldIndex) {
       _current = target;
@@ -179,10 +201,13 @@ class QueueModel {
     if (_shuffleOriginal != null) return;
     final end = _autoplayStart ?? _tracks.length;
     _shuffleOriginal = _tracks.sublist(0, end);
+    _shuffleOriginalIds = _ids.sublist(0, end);
     final from = _current + 1;
     if (from < end) {
-      final upcoming = _tracks.sublist(from, end)..shuffle(random);
-      _tracks.replaceRange(from, end, upcoming);
+      final indices = List<int>.generate(end - from, (i) => from + i)
+        ..shuffle(random);
+      _tracks.replaceRange(from, end, [for (final i in indices) _tracks[i]]);
+      _ids.replaceRange(from, end, [for (final i in indices) _ids[i]]);
     }
   }
 
@@ -191,46 +216,51 @@ class QueueModel {
   /// tracks stay at the end.
   void unshuffle() {
     final original = _shuffleOriginal;
-    if (original == null) return;
+    final originalIds = _shuffleOriginalIds;
+    if (original == null || originalIds == null) return;
     _shuffleOriginal = null;
+    _shuffleOriginalIds = null;
 
     final end = _autoplayStart ?? _tracks.length;
     final region = _tracks.sublist(0, end);
+    final regionIds = _ids.sublist(0, end);
     final autoplayTail = _tracks.sublist(end);
-    final currentTrack = current;
+    final autoplayTailIds = _ids.sublist(end);
+    final currentId =
+        (_current >= 0 && _current < _ids.length) ? _ids[_current] : null;
 
-    // Match by identity, counting occurrences so a track queued twice survives.
-    final remaining = HashMap<Track, int>.identity();
-    for (final t in region) {
-      remaining[t] = (remaining[t] ?? 0) + 1;
-    }
+    final presentIds = regionIds.toSet();
     final restored = <Track>[];
-    for (final t in original) {
-      final n = remaining[t] ?? 0;
-      if (n > 0) {
-        restored.add(t);
-        remaining[t] = n - 1;
+    final restoredIds = <int>[];
+    final seenIds = <int>{};
+    for (var i = 0; i < originalIds.length; i++) {
+      final id = originalIds[i];
+      if (presentIds.contains(id) && seenIds.add(id)) {
+        restored.add(original[i]);
+        restoredIds.add(id);
       }
     }
     final added = <Track>[];
-    for (final t in region) {
-      final n = remaining[t] ?? 0;
-      if (n > 0) {
-        added.add(t);
-        remaining[t] = n - 1;
+    final addedIds = <int>[];
+    for (var i = 0; i < regionIds.length; i++) {
+      final id = regionIds[i];
+      if (!seenIds.contains(id)) {
+        added.add(region[i]);
+        addedIds.add(id);
       }
     }
     if (added.isNotEmpty) {
-      final at = currentTrack == null
-          ? 0
-          : restored.indexWhere((t) => identical(t, currentTrack)) + 1;
-      restored.insertAll(at.clamp(0, restored.length), added);
+      final at = currentId == null ? 0 : restoredIds.indexOf(currentId) + 1;
+      final insertAt = at.clamp(0, restored.length);
+      restored.insertAll(insertAt, added);
+      restoredIds.insertAll(insertAt, addedIds);
     }
 
     _tracks = [...restored, ...autoplayTail];
+    _ids = [...restoredIds, ...autoplayTailIds];
     _autoplayStart = autoplayTail.isEmpty ? null : restored.length;
-    if (currentTrack != null) {
-      _current = _tracks.indexWhere((t) => identical(t, currentTrack));
+    if (currentId != null) {
+      _current = _ids.indexOf(currentId);
     }
   }
 

@@ -5,10 +5,12 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/models/addon_models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_widgets.dart';
+import 'player_seekbar.dart';
 
 class DesktopFullscreenPlayer extends StatefulWidget {
   const DesktopFullscreenPlayer({super.key});
@@ -102,18 +104,89 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                     SizedBox(
                       width: constraints.maxWidth * proportion - 2, // Subtract half divider width
                       child: Padding(
-                    padding: const EdgeInsets.all(48.0),
+                    padding: const EdgeInsets.fromLTRB(32, 20, 32, 28),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.keyboard_arrow_down, size: 36),
-                          color: isDark ? Colors.white : Colors.black,
-                          onPressed: () => Navigator.of(context).pop(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.keyboard_arrow_down, size: 36),
+                              color: isDark ? Colors.white : Colors.black,
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                            PopupMenuButton<String>(
+                              icon: Icon(
+                                Icons.more_vert_rounded,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                              ),
+                              onSelected: (value) {
+                                if (value == 'radio') {
+                                  toggleRadio(context, player, track);
+                                } else if (value.startsWith('seekbar:')) {
+                                  settings.setSeekbarStyle(
+                                      value.substring('seekbar:'.length));
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                PopupMenuItem(
+                                  value: 'radio',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.radio,
+                                        size: 18,
+                                        color: player.radioSeed != null
+                                            ? AppTheme.primaryGreen
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(player.radioSeed != null
+                                          ? 'Stop Radio'
+                                          : 'Start Radio'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuDivider(),
+                                const PopupMenuItem(
+                                  enabled: false,
+                                  child: Text('Seekbar Style',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold)),
+                                ),
+                                for (final style in const [
+                                  ('normal', 'Normal'),
+                                  ('sleek', 'Sleek'),
+                                  ('waveform', 'Waveform'),
+                                  ('heartbeat', 'Heartbeat'),
+                                ])
+                                  PopupMenuItem(
+                                    value: 'seekbar:${style.$1}',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          settings.seekbarStyle == style.$1
+                                              ? Icons.check_rounded
+                                              : Icons.circle_outlined,
+                                          size: 16,
+                                          color: settings.seekbarStyle == style.$1
+                                              ? AppTheme.primaryGreen
+                                              : null,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(style.$2),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const Spacer(flex: 1),
+                        const SizedBox(height: 12),
                         Expanded(
-                          flex: 12,
+                          flex: 16,
                           child: Center(
                             child: AspectRatio(
                               aspectRatio: 1,
@@ -129,7 +202,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                         offset: const Offset(0, 20),
                                       )
                                     ],
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(8),
                                     image: DecorationImage(
                                       image: CachedNetworkImageProvider(track.displayImage, maxWidth: 800),
                                       fit: BoxFit.cover,
@@ -140,7 +213,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                             ),
                           ),
                         ),
-                        const Spacer(flex: 1),
+                        const SizedBox(height: 20),
                         Center(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -153,7 +226,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                     track.title,
                                     style: TextStyle(
                                       color: isDark ? Colors.white : Colors.black,
-                                      fontSize: 42,
+                                      fontSize: 38,
                                       fontWeight: FontWeight.bold,
                                       height: 1.1,
                                     ),
@@ -163,7 +236,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               Hero(
                                 tag: 'player_bar_artist_${track.id}',
                                 child: Material(
@@ -172,7 +245,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                     track.artist,
                                     style: TextStyle(
                                       color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.7),
-                                      fontSize: 24,
+                                      fontSize: 21,
                                       fontWeight: FontWeight.w500,
                                     ),
                                     textAlign: TextAlign.center,
@@ -181,10 +254,37 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   ),
                                 ),
                               ),
+                              if (player.providerAddonName != null ||
+                                  player.qualityLabel != null) ...[
+                                const SizedBox(height: 12),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  alignment: WrapAlignment.center,
+                                  children: [
+                                    if (player.providerAddonName != null)
+                                      _FullscreenBadge(
+                                        icon: Icons.extension_outlined,
+                                        label: player.providerAddonName!,
+                                        fg: isDark ? Colors.white70 : Colors.black54,
+                                        bg: (isDark ? Colors.white : Colors.black)
+                                            .withValues(alpha: 0.08),
+                                      ),
+                                    if (player.qualityLabel != null)
+                                      _FullscreenQualityBadge(
+                                        label: player.qualityLabel!,
+                                        detail: player.qualityDetail,
+                                        tier: player.qualityTier ??
+                                            StreamQualityTier.standard,
+                                        isDark: isDark,
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 22),
                         // Player Controls
                         Column(
                           children: [
@@ -196,40 +296,16 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   style: TextStyle(color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.5), fontSize: 14),
                                 ),
                                 Expanded(
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 18.0),
-                                            child: LinearProgressIndicator(
-                                              value: player.bufferedSliderValue / 1000,
-                                              backgroundColor: Colors.transparent,
-                                              valueColor: AlwaysStoppedAnimation<Color>(
-                                                (isDark ? Colors.white : Colors.black).withValues(alpha: 0.3),
-                                              ),
-                                              minHeight: 4,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      SliderTheme(
-                                        data: SliderTheme.of(context).copyWith(
-                                          activeTrackColor: AppTheme.primaryGreen,
-                                          inactiveTrackColor: Colors.transparent,
-                                          trackHeight: 4,
-                                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
-                                        ),
-                                        child: Slider(
-                                          value: player.sliderValue.toDouble(),
-                                          min: 0,
-                                          max: 1000,
-                                          onChanged: (value) => player.seekToSlider(value.toInt()),
-                                        ),
-                                      ),
-                                    ],
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    child: PlayerSeekBar(
+                                      style: settings.seekbarStyle,
+                                      value: player.sliderValue,
+                                      bufferedValue: player.bufferedSliderValue,
+                                      seed: track.id,
+                                      isDark: isDark,
+                                      onChanged: player.seekToSlider,
+                                    ),
                                   ),
                                 ),
                                 Text(
@@ -265,7 +341,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   child: Container(
                                     width: 72,
                                     height: 72,
-                                    decoration: const BoxDecoration(
+                                    decoration: BoxDecoration(
                                       color: AppTheme.primaryGreen,
                                       shape: BoxShape.circle,
                                     ),
@@ -300,14 +376,6 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   iconSize: 28,
                                   color: player.loopMode != LoopMode.off ? AppTheme.primaryGreen : (isDark ? Colors.white54 : Colors.black54),
                                   onPressed: player.toggleLoop,
-                                ),
-                                const SizedBox(width: 24),
-                                IconButton(
-                                  icon: const Icon(Icons.radio),
-                                  iconSize: 28,
-                                  tooltip: player.radioSeed != null ? 'Stop radio' : 'Start radio',
-                                  color: player.radioSeed != null ? AppTheme.primaryGreen : (isDark ? Colors.white54 : Colors.black54),
-                                  onPressed: () => toggleRadio(context, player, track),
                                 ),
                               ],
                             ),
@@ -365,9 +433,34 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                         ),
                         // Tab Content
                         Expanded(
-                          child: _selectedIndex == 0 
-                            ? const _QueueView() 
-                            : LyricsList(isDark: isDark), // Reuse LyricsList from lyrics_screen.dart
+                          child: _selectedIndex == 0
+                              ? const _QueueView()
+                              : Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      20, 0, 24, 24),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: (isDark
+                                              ? Colors.white
+                                              : Colors.black)
+                                          .withValues(alpha: 0.04),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: (isDark
+                                                ? Colors.white
+                                                : Colors.black)
+                                            .withValues(alpha: 0.06),
+                                      ),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: LyricsList(
+                                        isDark: isDark,
+                                        showHeader: false,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                         ),
                       ],
                     ),
@@ -549,5 +642,94 @@ class _QueueView extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _FullscreenBadge extends StatelessWidget {
+  final IconData? icon;
+  final String label;
+  final Color fg;
+  final Color bg;
+
+  const _FullscreenBadge({
+    this.icon,
+    required this.label,
+    required this.fg,
+    required this.bg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 15, color: fg),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FullscreenQualityBadge extends StatelessWidget {
+  final String label;
+  final String? detail;
+  final StreamQualityTier tier;
+  final bool isDark;
+
+  const _FullscreenQualityBadge({
+    required this.label,
+    this.detail,
+    required this.tier,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color bg;
+    Color fg;
+    IconData? icon;
+
+    switch (tier) {
+      case StreamQualityTier.atmos:
+        bg = Colors.transparent;
+        fg = isDark ? const Color(0xFFB39DDB) : const Color(0xFF5E35B1);
+        icon = Icons.spatial_audio_rounded;
+      case StreamQualityTier.hiRes:
+        bg = Colors.transparent;
+        fg = isDark ? const Color(0xFFFFCA28) : const Color(0xFFD97706);
+        icon = Icons.high_quality_rounded;
+      case StreamQualityTier.lossless:
+        bg = Colors.transparent;
+        fg = isDark ? AppTheme.primaryGreen : const Color(0xFF1B5E20);
+        icon = Icons.graphic_eq_rounded;
+      case StreamQualityTier.standard:
+        bg = Colors.transparent;
+        fg = isDark ? Colors.white60 : Colors.black54;
+        icon = null;
+    }
+
+    final badge = _FullscreenBadge(
+      icon: icon,
+      label: label.toUpperCase(),
+      fg: fg,
+      bg: bg,
+    );
+    return detail != null && detail!.isNotEmpty
+        ? Tooltip(message: detail!, child: badge)
+        : badge;
   }
 }

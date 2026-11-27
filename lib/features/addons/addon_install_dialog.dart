@@ -201,7 +201,7 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                           ),
                           child: Text(
                             manifest.addonTypeLabel,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.primaryGreen),

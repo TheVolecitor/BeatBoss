@@ -172,10 +172,22 @@ class StreamCacheService extends ChangeNotifier {
     ];
   }
 
-  /// Removes one song from the cache and deletes its file.
-  void remove(Track track) {
-    _removeEntry(keyFor(track));
+  bool _isInUse(String key) =>
+      key == _playingKey ||
+      _jobs.any((j) => j.key == key && j.session.isServing);
+
+  /// Removes one song from the cache and deletes its file. Returns false if the
+  /// file is currently in use or could not be deleted.
+  bool remove(Track track) {
+    final key = keyFor(track);
+    final entry = _index[key];
+    if (entry == null) return true;
+    if (_isInUse(key)) return false;
+    if (!_deleteFile(_pathOf(entry))) return false;
+    _index.remove(key);
+    _persist();
     notifyListeners();
+    return true;
   }
 
   /// Forgets a cached file that failed to play.
@@ -347,7 +359,7 @@ class StreamCacheService extends ChangeNotifier {
     if (total <= max) return;
 
     final candidates = _index.values
-        .where((e) => e.key != protect && e.key != _playingKey)
+        .where((e) => e.key != protect && !_isInUse(e.key))
         .toList()
       ..sort((a, b) => a.lastAccess.compareTo(b.lastAccess));
     for (final e in candidates) {
@@ -371,8 +383,11 @@ class StreamCacheService extends ChangeNotifier {
   }
 
   void _removeEntry(String key) {
-    final entry = _index.remove(key);
-    if (entry != null) _deleteFile(_pathOf(entry));
+    final entry = _index[key];
+    if (entry == null) return;
+    if (_isInUse(key)) return;
+    if (!_deleteFile(_pathOf(entry))) return;
+    _index.remove(key);
     _persist();
   }
 

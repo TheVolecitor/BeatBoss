@@ -29,13 +29,15 @@ void main() {
     });
 
     test('the same title by a different artist is rejected', () {
-      expect(scoreMatch(rec, 'Song', 'Someone Else'), lessThan(kMatchThreshold));
+      expect(
+          scoreMatch(rec, 'Song', 'Someone Else'), lessThan(kMatchThreshold));
     });
 
     test('a different title by the same artist is rejected', () {
       expect(scoreMatch(rec, 'Another Song Entirely', 'Artist'),
           lessThan(kMatchThreshold));
-      expect(scoreMatch(const RecTrack(title: 'Home', artist: 'Artist'),
+      expect(
+          scoreMatch(const RecTrack(title: 'Home', artist: 'Artist'),
               'Take Me Home', 'Artist'),
           lessThan(kMatchThreshold));
     });
@@ -49,13 +51,32 @@ void main() {
 
     test('an arbitrary title extension is rejected', () {
       expect(scoreMatch(rec, 'Song Two', 'Artist'), lessThan(kMatchThreshold));
-      expect(scoreMatch(rec, 'Song Part 2', 'Artist'), lessThan(kMatchThreshold));
+      expect(
+          scoreMatch(rec, 'Song Part 2', 'Artist'), lessThan(kMatchThreshold));
     });
 
     test('an artist substring is not treated as an artist match', () {
       const queenRec = RecTrack(title: 'Somebody to Love', artist: 'Queen');
       expect(scoreMatch(queenRec, 'Somebody to Love', 'Queensryche'),
           lessThan(kMatchThreshold));
+    });
+
+    test('an exact ISRC match wins outright regardless of title formatting',
+        () {
+      const isrcRec = RecTrack(
+        title: 'Track Title',
+        artist: 'Artist Name',
+        isrc: 'USRC12345678',
+      );
+      expect(
+        scoreMatch(
+          isrcRec,
+          'Completely Different Localized Title',
+          'Various Artists',
+          candidateIsrc: 'usrc12345678',
+        ),
+        1.0,
+      );
     });
 
     test('empty candidate fields score zero', () {

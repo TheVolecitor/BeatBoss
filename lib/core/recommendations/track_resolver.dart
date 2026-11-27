@@ -23,6 +23,7 @@ Track trackFromAddon(AddonTrack at) {
     addonId: at.addonId,
     addonTrackId: at.id,
     streamURL: at.streamURL,
+    isrc: at.isrc,
   );
 }
 
@@ -102,6 +103,36 @@ class TrackResolver {
 
     await _acquire();
     try {
+      // 1. Eclipse /resolve endpoint (uses ISRC when known, or title+artist+durationMs)
+      final exact = await _addons.resolveTrack(rec, addonId: addonId);
+      if (exact.handled) {
+        final track = exact.track != null ? trackFromAddon(exact.track!) : null;
+        await _writeCache(key, track);
+        return track;
+      }
+
+      // 2. Eclipse /resolve-isrc?isrc=... lookup when ISRC is known
+      final recIsrc = rec.isrc?.trim();
+      if (recIsrc != null && recIsrc.isNotEmpty) {
+        final isrcTrackId = await _addons.resolveIsrc(recIsrc, addonId: addonId);
+        if (isrcTrackId != null) {
+          final track = Track(
+            id: isrcTrackId,
+            title: rec.title,
+            artist: rec.artist,
+            albumTitle: rec.album,
+            albumCover: rec.imageUrl,
+            duration: rec.durationMs != null ? (rec.durationMs! / 1000).round() : null,
+            addonId: addonId,
+            addonTrackId: isrcTrackId,
+            isrc: recIsrc,
+          );
+          await _writeCache(key, track);
+          return track;
+        }
+      }
+
+      // 3. Fallback to /search, prioritizing ISRC match among results
       final result = await _addons.search(
         '${rec.title} ${rec.artist}',
         limit: 5,
@@ -113,7 +144,12 @@ class TrackResolver {
       AddonTrack? best;
       var bestScore = 0.0;
       for (final candidate in result.tracks) {
-        final score = scoreMatch(rec, candidate.title, candidate.artist);
+        final score = scoreMatch(
+          rec,
+          candidate.title,
+          candidate.artist,
+          candidateIsrc: candidate.isrc,
+        );
         if (score > bestScore) {
           bestScore = score;
           best = candidate;

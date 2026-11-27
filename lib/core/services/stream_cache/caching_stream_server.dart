@@ -151,6 +151,8 @@ class CachingSession implements ProxyCacheHandle {
   bool _closed = false;
   bool _released = false;
   int _clients = 0;
+
+  bool get isServing => !_cancelled && (_downloadActive || _clients > 0);
   HttpClientRequest? _mainRequest;
   final Completer<void> _headersReady = Completer<void>();
   final List<Completer<void>> _waiters = [];

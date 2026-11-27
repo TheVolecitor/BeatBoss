@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/models/models.dart';
+import '../../core/models/addon_models.dart';
 import '../../core/services/local_library_service.dart';
 import '../../core/services/addon_service.dart';
 import '../lyrics/lyrics_screen.dart';
@@ -14,6 +15,7 @@ import '../queue/queue_widgets.dart';
 import '../search/search_screen.dart';
 import '../shared/addon_detail_screen.dart';
 import 'desktop_fullscreen_player.dart';
+import 'player_seekbar.dart';
 
 /// Player Bar - bottom player controls matching original exactly
 class PlayerBar extends StatefulWidget {
@@ -311,7 +313,7 @@ class _DesktopPlayerBar extends StatelessWidget {
                           margin: const EdgeInsets.symmetric(horizontal: 5),
                           width: 34,
                           height: 34,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                               color: AppTheme.primaryGreen,
                               shape: BoxShape.circle),
                           child: player.isBuffering
@@ -423,13 +425,23 @@ class _DesktopPlayerBar extends StatelessWidget {
 
           // Right: Controls (Fixed Width to match Left)
           SizedBox(
-            width: 260,
+            width: 280,
             child: Padding(
               padding:
                   const EdgeInsets.only(right: 20.0), // Shift closer inwards
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  if (player.qualityLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _QualityBadge(
+                        label: player.qualityLabel!,
+                        detail: player.qualityDetail,
+                        tier: player.qualityTier ?? StreamQualityTier.standard,
+                        isDark: isDark,
+                      ),
+                    ),
                   IconButton(
                     icon: const Icon(Icons.lyrics_outlined),
                     color: secondaryColor,
@@ -593,7 +605,7 @@ class _MobilePlayerBar extends StatelessWidget {
           value: player.sliderValue / 1000,
           backgroundColor: Colors.transparent,
           valueColor:
-              const AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
+              AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
           minHeight: 2,
         ),
         GestureDetector(
@@ -663,7 +675,7 @@ class _MobilePlayerBar extends StatelessWidget {
                         margin: const EdgeInsets.symmetric(horizontal: 8),
                         width: 36,
                         height: 36,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                             color: AppTheme.primaryGreen,
                             shape: BoxShape.circle),
                         child: player.isBuffering
@@ -738,13 +750,14 @@ class _ExpandedMobilePlayer extends StatelessWidget {
         final screenWidth = MediaQuery.of(context).size.width;
         final isSmallScreen = screenHeight < 700;
 
-        // Dynamic sizes
-        final artSize = isSmallScreen ? screenHeight * 0.3 : 300.0;
-        final titleFontSize = isSmallScreen ? 20.0 : 26.0;
-        final artistFontSize = isSmallScreen ? 14.0 : 18.0;
-        final sectionSpacing = isSmallScreen ? 15.0 : 30.0;
+        // Dynamic sizes — bigger cover art in mobile fullscreen
+        final artSize = (screenWidth - 40).clamp(220.0, isSmallScreen ? 280.0 : 360.0);
+        final titleFontSize = isSmallScreen ? 20.0 : 24.0;
+        final artistFontSize = isSmallScreen ? 14.0 : 17.0;
+        final sectionSpacing = isSmallScreen ? 12.0 : 22.0;
 
         return Consumer<AudioPlayerService>(builder: (context, player, _) {
+          final settings = context.watch<SettingsService>();
           // The sheet is opened with the track that was playing at that moment;
           // follow the player so Next/Previous update art, title and artist.
           final track = player.currentTrack ?? this.track;
@@ -763,34 +776,106 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                      24, 20, 24, 20 + MediaQuery.of(context).viewPadding.bottom),
+                      20, 14, 20, 20 + MediaQuery.of(context).viewPadding.bottom),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // Drag handle
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 20),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.white24 : Colors.black12,
-                            borderRadius: BorderRadius.circular(2),
+                      // Top row: drag handle + 3-dot menu
+                      Row(
+                        children: [
+                          const SizedBox(width: 48),
+                          Expanded(
+                            child: Center(
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.white24 : Colors.black12,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          PopupMenuButton<String>(
+                            icon: Icon(
+                              Icons.more_vert_rounded,
+                              color: secondaryColor,
+                            ),
+                            onSelected: (value) {
+                              if (value == 'radio') {
+                                toggleRadio(context, player, track);
+                              } else if (value.startsWith('seekbar:')) {
+                                settings.setSeekbarStyle(
+                                    value.substring('seekbar:'.length));
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: 'radio',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.radio,
+                                      size: 18,
+                                      color: player.radioSeed != null
+                                          ? AppTheme.primaryGreen
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(player.radioSeed != null
+                                        ? 'Stop Radio'
+                                        : 'Start Radio'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuDivider(),
+                              const PopupMenuItem(
+                                enabled: false,
+                                child: Text('Seekbar Style',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold)),
+                              ),
+                              for (final style in const [
+                                ('normal', 'Normal'),
+                                ('sleek', 'Sleek'),
+                                ('waveform', 'Waveform'),
+                                ('heartbeat', 'Heartbeat'),
+                              ])
+                                PopupMenuItem(
+                                  value: 'seekbar:${style.$1}',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        settings.seekbarStyle == style.$1
+                                            ? Icons.check_rounded
+                                            : Icons.circle_outlined,
+                                        size: 16,
+                                        color: settings.seekbarStyle == style.$1
+                                            ? AppTheme.primaryGreen
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(style.$2),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
 
-                      // Art
+                      // Bigger Cover Art
                       SizedBox(
                           height: artSize,
                           child: Center(
                               child: _TrackArt(
                                   imageUrl: track.displayImage,
-                                  size: artSize - 20,
+                                  size: artSize,
                                   isDownloaded: false))),
                       SizedBox(height: sectionSpacing),
 
-                      // Info
+                      // Info + Addon/Quality Markers
                       Column(
                         children: [
                           FittedBox(
@@ -805,7 +890,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                               maxLines: 2,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           GestureDetector(
                             onTap: track.artistId != null
                                 ? () {
@@ -830,6 +915,42 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                 textAlign: TextAlign.center,
                                 maxLines: 1),
                           ),
+                          if (player.providerAddonName != null ||
+                              player.qualityLabel != null) ...[
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 6,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                if (player.providerAddonName != null)
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.extension_outlined,
+                                          size: 13, color: secondaryColor),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        player.providerAddonName!,
+                                        style: TextStyle(
+                                          color: secondaryColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                if (player.qualityLabel != null)
+                                  _QualityBadge(
+                                    label: player.qualityLabel!,
+                                    detail: player.qualityDetail,
+                                    tier: player.qualityTier ??
+                                        StreamQualityTier.standard,
+                                    isDark: isDark,
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                       SizedBox(height: sectionSpacing),
@@ -837,42 +958,16 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                       // Progress
                       Column(
                         children: [
-                          Stack(
-                            children: [
-                              // Buffered Indicator
-                              Positioned.fill(
-                                child: Align(
-                                  alignment: Alignment.center,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal:
-                                            24.0), // Slider internal padding default is around 24
-                                    child: LinearProgressIndicator(
-                                      value: player.bufferedSliderValue / 1000,
-                                      backgroundColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        (isDark ? Colors.white : Colors.black)
-                                            .withValues(alpha: 0.3),
-                                      ),
-                                      minHeight: 4,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  inactiveTrackColor: Colors.transparent,
-                                ),
-                                child: Slider(
-                                  value: player.sliderValue.toDouble(),
-                                  min: 0,
-                                  max: 1000,
-                                  activeColor: AppTheme.primaryGreen,
-                                  onChanged: (v) =>
-                                      player.seekToSlider(v.toInt()),
-                                ),
-                              ),
-                            ],
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: PlayerSeekBar(
+                              style: settings.seekbarStyle,
+                              value: player.sliderValue,
+                              bufferedValue: player.bufferedSliderValue,
+                              seed: track.id,
+                              isDark: isDark,
+                              onChanged: player.seekToSlider,
+                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1088,5 +1183,63 @@ class _TrackArt extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+class _QualityBadge extends StatelessWidget {
+  final String label;
+  final String? detail;
+  final StreamQualityTier tier;
+  final bool isDark;
+
+  const _QualityBadge({
+    required this.label,
+    this.detail,
+    required this.tier,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color fg;
+    IconData? icon;
+
+    switch (tier) {
+      case StreamQualityTier.atmos:
+        fg = isDark ? const Color(0xFFB39DDB) : const Color(0xFF5E35B1);
+        icon = Icons.spatial_audio_rounded;
+      case StreamQualityTier.hiRes:
+        fg = isDark ? const Color(0xFFFFCA28) : const Color(0xFFD97706);
+        icon = Icons.high_quality_rounded;
+      case StreamQualityTier.lossless:
+        fg = isDark ? AppTheme.primaryGreen : const Color(0xFF1B5E20);
+        icon = Icons.graphic_eq_rounded;
+      case StreamQualityTier.standard:
+        fg = isDark ? Colors.white54 : Colors.black54;
+        icon = null;
+    }
+
+    final marker = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 4),
+        ],
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            color: fg,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    );
+
+    return detail != null && detail!.isNotEmpty
+        ? Tooltip(message: detail!, child: marker)
+        : marker;
   }
 }

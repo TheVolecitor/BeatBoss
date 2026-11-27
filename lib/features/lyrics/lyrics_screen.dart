@@ -39,8 +39,14 @@ class LyricsScreen extends StatelessWidget {
 class LyricsList extends StatefulWidget {
   final ScrollController? scrollController;
   final bool isDark;
+  final bool showHeader;
 
-  const LyricsList({this.scrollController, required this.isDark, super.key});
+  const LyricsList({
+    this.scrollController,
+    required this.isDark,
+    this.showHeader = true,
+    super.key,
+  });
 
   @override
   State<LyricsList> createState() => _LyricsListState();
@@ -92,54 +98,55 @@ class _LyricsListState extends State<LyricsList> {
     return CustomScrollView(
       controller: _autoScrollController,
       slivers: [
-        SliverToBoxAdapter(
-          child: Column(
-            children: [
-              // Handle
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: widget.isDark ? Colors.white30 : Colors.black26,
-                  borderRadius: BorderRadius.circular(2),
+        if (widget.showHeader)
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                // Handle
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: widget.isDark ? Colors.white30 : Colors.black26,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Text(
-                      'Lyrics',
-                      style: TextStyle(
-                        color: widget.isDark ? Colors.white : Colors.black,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (track != null)
-                      Expanded(
-                        child: Text(
-                          track.title,
-                          textAlign: TextAlign.end,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color:
-                                widget.isDark ? Colors.white54 : Colors.black45,
-                            fontSize: 14,
-                          ),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Lyrics',
+                        style: TextStyle(
+                          color: widget.isDark ? Colors.white : Colors.black,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                  ],
+                      const Spacer(),
+                      if (track != null)
+                        Expanded(
+                          child: Text(
+                            track.title,
+                            textAlign: TextAlign.end,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color:
+                                  widget.isDark ? Colors.white54 : Colors.black45,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         if (player.isFetchingLyrics)
-          const SliverFillRemaining(
+          SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
               child: CircularProgressIndicator(color: AppTheme.primaryGreen),

@@ -289,6 +289,21 @@ void main() {
       expect(ids(q).where((e) => e == 'a').length, 2);
     });
 
+    test('unshuffle keeps the second copy selected when same Track instance appears twice',
+        () {
+      final a = t('a');
+      final b = t('b');
+      final c = t('c');
+      final q = QueueModel()..replace([a, b, a, c]);
+      q.shuffleUpcoming(Random(2));
+      q.currentIndex = q.tracks.lastIndexWhere((e) => identical(e, a));
+
+      q.unshuffle();
+
+      expect(q.currentIndex, 2);
+      expect(q.tracks[q.currentIndex + 1].id, 'c');
+    });
+
     test('replace with shuffled plays the chosen track first', () {
       final q = QueueModel();
       q.replace(names.map(t).toList(),

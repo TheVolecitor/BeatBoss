@@ -9,6 +9,7 @@ import '../../core/recommendations/track_resolver.dart';
 import '../../core/services/addon_service.dart';
 import '../../core/services/history_service.dart';
 import '../../core/services/last_fm_service.dart';
+import '../../core/services/listenbrainz_service.dart';
 import '../../core/services/settings_service.dart';
 
 /// Genres shown when the user has no Last.fm login.
@@ -25,8 +26,12 @@ class HomeController extends ChangeNotifier {
   final RecommendationService recs;
   final SettingsService settings;
   final LastFmService lastFm;
+  final ListenBrainzService? listenBrainz;
   final AddonService addons;
   final HistoryService history;
+
+  String chartRange = 'week';
+  bool get supportsChartRanges => recs.active.id == 'listenbrainz';
 
   // Addon catalog
   List<Track> catalogTracks = [];
@@ -55,6 +60,7 @@ class HomeController extends ChangeNotifier {
     required this.recs,
     required this.settings,
     required this.lastFm,
+    this.listenBrainz,
     required this.addons,
     required this.history,
   });
@@ -98,6 +104,7 @@ class HomeController extends ChangeNotifier {
     _signature = _currentSignature;
     _addonId = addons.activeAddonId;
     lastFm.addListener(_onSourceChanged);
+    listenBrainz?.addListener(_onSourceChanged);
     settings.addListener(_onSourceChanged);
     addons.addListener(_onAddonChanged);
     _showCached();
@@ -108,6 +115,7 @@ class HomeController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     lastFm.removeListener(_onSourceChanged);
+    listenBrainz?.removeListener(_onSourceChanged);
     settings.removeListener(_onSourceChanged);
     addons.removeListener(_onAddonChanged);
     for (final s in _allShelves) {
@@ -171,7 +179,7 @@ class HomeController extends ChangeNotifier {
     _fansArtist = _pickFansArtist(
         recs.cachedShelf(RecommendationService.topArtistsShelfId));
     fans = _fansArtist == null ? null : recs.cachedSimilarArtists(_fansArtist!);
-    charts.setShelf(recs.cachedChartsShelf);
+    charts.setShelf(recs.cachedChartsShelfFor(chartRange));
     if (!personal) {
       for (final tag in kLoggedOutTags) {
         _tagShelf(tag).setShelf(recs.cachedTagShelf(tag));
@@ -246,16 +254,32 @@ class HomeController extends ChangeNotifier {
 
   Future<void> _loadPersonal(bool force) async {
     if (!recs.canRecommend) return;
+    void applyPersonal(ResolvedShelf target, RecShelf? shelf) {
+      if (_disposed || !recs.canRecommend) return;
+      target.setShelf(shelf);
+    }
+
     await Future.wait([
-      recs.recommendedShelf(force: force).then(recommended.setShelf),
-      recs.mixShelf(force: force).then(mix.setShelf),
-      recs.libraryShelf(force: force).then(library.setShelf),
+      recs.recommendedShelf(force: force).then((s) => applyPersonal(recommended, s)),
+      recs.mixShelf(force: force).then((s) => applyPersonal(mix, s)),
+      recs.libraryShelf(force: force).then((s) => applyPersonal(library, s)),
       recs.artistMixShelves(force: force).then((shelves) {
-        if (_disposed) return;
+        if (_disposed || !recs.canRecommend) return;
         _setList(artistMixes, shelves, (l) => artistMixes = l);
         _notify();
       }),
     ]);
+  }
+
+  Future<void> setChartRange(String range) async {
+    if (chartRange == range || _disposed) return;
+    chartRange = range;
+    charts.setShelf(recs.cachedChartsShelfFor(range));
+    _notify();
+    final shelf = await recs.chartsShelf(range: range);
+    if (!_disposed && chartRange == range) {
+      charts.setShelf(shelf);
+    }
   }
 
   /// Shelves that don't need a login: because-you-listened, fans-also-like,
@@ -264,7 +288,7 @@ class HomeController extends ChangeNotifier {
     await Future.wait([
       _loadBecause(force),
       _loadFans(force),
-      recs.chartsShelf(force: force).then(charts.setShelf),
+      recs.chartsShelf(force: force, range: chartRange).then(charts.setShelf),
       if (!personal)
         for (final tag in kLoggedOutTags)
           recs.tagShelf(tag, force: force).then(_tagShelf(tag).setShelf),

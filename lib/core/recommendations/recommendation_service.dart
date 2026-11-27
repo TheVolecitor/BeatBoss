@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/addon_service.dart';
 import '../services/settings_service.dart';
 import '../utils/hive/hive_provider.dart';
+import 'listenbrainz_recommendation_provider.dart';
 import 'rec_models.dart';
 import 'recommendation_provider.dart';
 import 'track_resolver.dart';
@@ -275,20 +276,41 @@ class RecommendationService extends ChangeNotifier {
   RecShelf? cachedSimilarArtists(String artist) =>
       sourceEnabled ? cachedShelf(similarArtistsShelfId(artist)) : null;
 
+  String _chartsKey(String range) =>
+      range == 'week' ? chartsShelfId : '$chartsShelfId:$range';
+
+  String? _chartsSubtitle(String range) {
+    if (active is! ListenBrainzRecommendationProvider) return null;
+    switch (range) {
+      case 'month':
+        return 'ListenBrainz · This month';
+      case 'all_time':
+        return 'ListenBrainz · All time';
+      default:
+        return 'ListenBrainz · This week';
+    }
+  }
+
   /// What's popular right now. No login needed.
-  Future<RecShelf?> chartsShelf({bool force = false}) async {
+  Future<RecShelf?> chartsShelf({bool force = false, String range = 'week'}) async {
     if (!sourceEnabled) return null;
+    if (active case final ListenBrainzRecommendationProvider lb) {
+      lb.chartRange = range;
+    }
     return _trackShelf(
-      chartsShelfId,
+      _chartsKey(range),
       'Top charts',
+      subtitle: _chartsSubtitle(range),
       force: force,
       max: 30,
       fetch: () => active.chartTopTracks(limit: 30),
     );
   }
 
-  RecShelf? get cachedChartsShelf =>
-      sourceEnabled ? cachedShelf(chartsShelfId) : null;
+  RecShelf? get cachedChartsShelf => cachedChartsShelfFor('week');
+
+  RecShelf? cachedChartsShelfFor(String range) =>
+      sourceEnabled ? cachedShelf(_chartsKey(range)) : null;
 
   /// More chart entries for the mix screen's "Load more".
   Future<List<RecTrack>> moreCharts(int page) async {

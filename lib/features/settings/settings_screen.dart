@@ -8,6 +8,7 @@ import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/services/stream_cache_service.dart';
 import '../../core/services/last_fm_service.dart';
+import '../../core/services/listenbrainz_service.dart';
 import '../../core/recommendations/recommendation_service.dart';
 import '../addons/addons_screen.dart';
 
@@ -20,6 +21,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  String _category = 'All';
+  static const _categories = ['All', 'Sources', 'Playback', 'Storage', 'General'];
+
   @override
   void initState() {
     super.initState();
@@ -52,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 children: <Widget>[
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.only(bottom: 14),
                     child: Text(
                       'Settings',
                       style: TextStyle(
@@ -63,52 +67,167 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
 
-                  // Addons Section
-                  _SettingsSection(
-                    title: 'Addons',
-                    isDark: isDark,
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.extension_outlined),
-                        title: const Text('Manage Addons'),
-                        subtitle:
-                            const Text('Install and configure extensions'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const Scaffold(
-                                      body: SafeArea(child: AddonsScreen()))));
-                        },
-                      ),
-                    ],
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 22),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final cat in _categories)
+                          ChoiceChip(
+                            label: Text(cat),
+                            selected: _category == cat,
+                            selectedColor: AppTheme.primaryGreen
+                                .withValues(alpha: isDark ? 0.25 : 0.2),
+                            labelStyle: TextStyle(
+                              fontWeight: _category == cat
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: _category == cat
+                                  ? AppTheme.primaryGreen
+                                  : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                            side: BorderSide(
+                              color: _category == cat
+                                  ? AppTheme.primaryGreen
+                                  : (isDark ? Colors.white12 : Colors.black12),
+                            ),
+                            onSelected: (_) => setState(() => _category = cat),
+                          ),
+                      ],
+                    ),
                   ),
 
-                  const SizedBox(height: 20),
+                  // Addons Section
+                  if (_category == 'All' || _category == 'Sources') ...[
+                    _SettingsSection(
+                      title: 'Addons & Sources',
+                      isDark: isDark,
+                      children: [
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryGreen.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(Icons.extension_rounded,
+                                color: AppTheme.primaryGreen, size: 20),
+                          ),
+                          title: const Text('Manage Addons',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: const Text(
+                              'Install, reorder priority, configure settings, or toggle extensions'),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const Scaffold(
+                                        body: SafeArea(child: AddonsScreen()))));
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // Appearance Section
-                  _SettingsSection(
-                    title: 'Appearance',
-                    isDark: isDark,
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.dark_mode_outlined),
-                        title: const Text('Dark Mode'),
-                        trailing: Switch(
-                          value: isDark,
-                          onChanged: (val) => settings.toggleTheme(),
-                          activeThumbColor: AppTheme.primaryGreen,
+                  if (_category == 'All' || _category == 'General') ...[
+                    _SettingsSection(
+                      title: 'Appearance',
+                      isDark: isDark,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.dark_mode_outlined),
+                          title: const Text('Dark Mode'),
+                          trailing: Switch(
+                            value: isDark,
+                            onChanged: (val) => settings.toggleTheme(),
+                            activeThumbColor: AppTheme.primaryGreen,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
+                        ListTile(
+                          leading: const Icon(Icons.palette_outlined),
+                          title: const Text('Accent Color'),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Wrap(
+                              spacing: 10,
+                              runSpacing: 8,
+                              children: [
+                                for (final preset in AppTheme.accentPresets)
+                                  GestureDetector(
+                                    onTap: () => settings
+                                        .setAccentColor(preset.color.toARGB32()),
+                                    child: Tooltip(
+                                      message: preset.name,
+                                      child: Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: preset.color,
+                                          shape: BoxShape.circle,
+                                          border: settings.accentColorValue ==
+                                                  preset.color.toARGB32()
+                                              ? Border.all(
+                                                  color: isDark
+                                                      ? Colors.white
+                                                      : Colors.black,
+                                                  width: 2.5,
+                                                )
+                                              : null,
+                                        ),
+                                        child: settings.accentColorValue ==
+                                                preset.color.toARGB32()
+                                            ? const Icon(Icons.check,
+                                                size: 16, color: Colors.black)
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.linear_scale_rounded),
+                          title: const Text('Fullscreen Seekbar Style'),
+                          subtitle: const Text('Style used in fullscreen player'),
+                          trailing: DropdownButton<String>(
+                            value: const [
+                              'normal',
+                              'sleek',
+                              'waveform',
+                              'heartbeat',
+                            ].contains(settings.seekbarStyle)
+                                ? settings.seekbarStyle
+                                : 'normal',
+                            underline: const SizedBox.shrink(),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'normal', child: Text('Normal')),
+                              DropdownMenuItem(
+                                  value: 'sleek', child: Text('Sleek')),
+                              DropdownMenuItem(
+                                  value: 'waveform', child: Text('Waveform')),
+                              DropdownMenuItem(
+                                  value: 'heartbeat', child: Text('Heartbeat')),
+                            ],
+                            onChanged: (v) {
+                              if (v != null) settings.setSeekbarStyle(v);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // Downloads Section
-                  _SettingsSection(
-                    title: 'Downloads & Storage',
+                  if (_category == 'All' || _category == 'Storage') ...[
+                    _SettingsSection(
+                      title: 'Downloads & Storage',
                     isDark: isDark,
                     children: [
                       ListTile(
@@ -199,25 +318,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                       ],
                     ],
-                  ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
-                  const SizedBox(height: 20),
-
-                  // Integrations (Last.fm)
-                  _SettingsSection(
-                    title: 'Integrations',
-                    isDark: isDark,
-                    children: [
-                      _LastFmTile(isDark: isDark),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
+                  // Integrations (Last.fm & ListenBrainz)
+                  if (_category == 'All' || _category == 'Sources') ...[
+                    _SettingsSection(
+                      title: 'Integrations',
+                      isDark: isDark,
+                      children: [
+                        _LastFmTile(isDark: isDark),
+                        _ListenBrainzTile(isDark: isDark),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // Recommendations: the source comes first, everything that
                   // needs it sits below and is disabled when it is off.
-                  _SettingsSection(
-                    title: 'Recommendations',
+                  if (_category == 'All' || _category == 'Sources') ...[
+                    _SettingsSection(
+                      title: 'Recommendations',
                     isDark: isDark,
                     children: [
                       Builder(builder: (context) {
@@ -298,13 +420,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ],
-                  ),
-
-                  const SizedBox(height: 20),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // Playback Section
-                  _SettingsSection(
-                    title: 'Playback',
+                  if (_category == 'All' || _category == 'Playback') ...[
+                    _SettingsSection(
+                      title: 'Playback',
                     isDark: isDark,
                     children: [
                       ListTile(
@@ -349,13 +472,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ],
-                  ),
-
-                  const SizedBox(height: 20),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
 
                   // About
-                  _SettingsSection(
-                    title: 'About',
+                  if (_category == 'All' || _category == 'General')
+                    _SettingsSection(
+                      title: 'About',
                     isDark: isDark,
                     children: const [
                       ListTile(
@@ -506,14 +630,14 @@ class _SettingsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 10, bottom: 10),
+          padding: const EdgeInsets.only(left: 6, bottom: 8),
           child: Text(
-            title,
+            title.toUpperCase(),
             style: TextStyle(
-              color: isDark ? Colors.white70 : Colors.black54,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1,
+              color: isDark ? Colors.white54 : Colors.black54,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
             ),
           ),
         ),
@@ -523,26 +647,31 @@ class _SettingsSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.05),
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.06),
               width: 1,
             ),
           ),
-          child: Column(
-            children: [
-              for (int i = 0; i < children.length; i++) ...[
-                if (i > 0)
-                  Divider(
-                    height: 1,
-                    indent: 60, // Align with text start
-                    endIndent: 20,
-                    color: isDark
-                        ? Colors.white10
-                        : Colors.black.withValues(alpha: 0.05),
-                  ),
-                children[i],
+          child: ListTileTheme(
+            data: const ListTileThemeData(
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            ),
+            child: Column(
+              children: [
+                for (int i = 0; i < children.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 1,
+                      indent: 56,
+                      endIndent: 16,
+                      color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.05),
+                    ),
+                  children[i],
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ],
@@ -658,6 +787,121 @@ class _LastFmTileState extends State<_LastFmTile> {
                 : () => setState(() => _pendingToken = null),
             child: const Text('Cancel'),
           ),
+      ],
+    );
+  }
+}
+
+class _ListenBrainzTile extends StatefulWidget {
+  final bool isDark;
+  const _ListenBrainzTile({required this.isDark});
+
+  @override
+  State<_ListenBrainzTile> createState() => _ListenBrainzTileState();
+}
+
+class _ListenBrainzTileState extends State<_ListenBrainzTile> {
+  final _tokenCtrl = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect(ListenBrainzService lb) async {
+    setState(() => _isLoading = true);
+    final ok = await lb.connect(_tokenCtrl.text);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (ok) {
+      _tokenCtrl.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connected to ListenBrainz as ${lb.username}')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(lb.lastAuthError ?? 'Could not connect ListenBrainz'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lb = context.watch<ListenBrainzService>();
+
+    if (lb.isAuthenticated) {
+      return ListTile(
+        leading: const Icon(Icons.graphic_eq, color: Color(0xFFEB743B)),
+        title: const Text('ListenBrainz'),
+        subtitle: Text('Connected as ${lb.username}'),
+        trailing: TextButton(
+          onPressed: () async => await lb.logout(),
+          child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
+        ),
+      );
+    }
+
+    return ExpansionTile(
+      leading: const Icon(Icons.graphic_eq, color: Color(0xFFEB743B)),
+      title: const Text('Connect ListenBrainz'),
+      subtitle: const Text('Open-source scrobbling & recommendations'),
+      childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      children: [
+        const Text(
+          'Paste your User Token from ListenBrainz settings. BeatBoss uses it to submit listens and power recommendations.',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _tokenCtrl,
+          obscureText: true,
+          decoration: InputDecoration(
+            labelText: 'ListenBrainz User Token',
+            filled: true,
+            fillColor: (widget.isDark ? Colors.white : Colors.black)
+                .withValues(alpha: 0.04),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          onSubmitted: (_) => _isLoading ? null : _connect(lb),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => lb.openTokenPage(),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Get Token'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : () => _connect(lb),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  foregroundColor: Colors.black,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text('Connect',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

@@ -2,7 +2,18 @@ import 'package:flutter/material.dart';
 
 class AppTheme {
   // BeatBoss Color Palette
-  static const Color primaryGreen = Color(0xFF1DB954);
+  static Color accentColor = const Color(0xFF1DB954);
+  static Color get primaryGreen => accentColor;
+
+  static const List<({String name, Color color})> accentPresets = [
+    (name: 'Spotify Green', color: Color(0xFF1DB954)),
+    (name: 'Electric Blue', color: Color(0xFF3B82F6)),
+    (name: 'Violet', color: Color(0xFF8B5CF6)),
+    (name: 'Crimson Rose', color: Color(0xFFF43F5E)),
+    (name: 'Amber Gold', color: Color(0xFFF59E0B)),
+    (name: 'Ocean Teal', color: Color(0xFF14B8A6)),
+  ];
+
   static const Color darkBackground = Color(0xFF020202);
   static const Color darkSidebar = Color(0xFF0A0A0A);
   static const Color darkCard = Color(0xFF1A1A1A);
@@ -17,7 +28,7 @@ class AppTheme {
       brightness: Brightness.dark,
       primaryColor: primaryGreen,
       scaffoldBackgroundColor: darkBackground,
-      colorScheme: const ColorScheme.dark(
+      colorScheme: ColorScheme.dark(
         primary: primaryGreen,
         secondary: primaryGreen,
         surface: darkCard,
@@ -74,7 +85,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: primaryGreen),
+          borderSide: BorderSide(color: primaryGreen),
         ),
         hintStyle: const TextStyle(color: Colors.white30),
       ),
@@ -97,7 +108,7 @@ class AppTheme {
       brightness: Brightness.light,
       primaryColor: primaryGreen,
       scaffoldBackgroundColor: lightBackground,
-      colorScheme: const ColorScheme.light(
+      colorScheme: ColorScheme.light(
         primary: primaryGreen,
         secondary: primaryGreen,
         surface: lightCard,
@@ -156,7 +167,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: primaryGreen),
+          borderSide: BorderSide(color: primaryGreen),
         ),
         hintStyle: const TextStyle(color: Colors.black38),
       ),

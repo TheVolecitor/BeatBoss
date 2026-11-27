@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../models/models.dart';
 import '../models/addon_models.dart';
+import '../recommendations/track_matching.dart';
 import 'download_manager_service.dart';
 import 'addon_service.dart';
 import 'settings_service.dart';
@@ -67,9 +68,14 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   Timer? _positionTimer;
   int _lastRequestId = 0;
   bool _isSwitchingTrack = false;
+  AddonStreamResult? _currentStreamResult;
+
+  AddonStreamResult? get currentStreamResult => _currentStreamResult;
   
   // Prefetch Cache
   final Map<String, AddonStreamResult> _prefetchCache = {};
+  ProxyCacheHandle? _prefetchedHandle;
+  String? _prefetchedHandleTrackId;
   bool _isPrefetching = false;
 
   final List<StreamSubscription> _subscriptions = [];
@@ -199,7 +205,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_isPrefetching) return;
 
     final timeLeft = _player.duration! - position;
-    if (timeLeft.inSeconds <= _settingsService.prefetchDuration) {
+    final triggerSeconds = _settingsService.prefetchDuration > 0
+        ? _settingsService.prefetchDuration
+        : 5;
+    if (timeLeft.inSeconds <= triggerSeconds) {
       final nextTrack = _q.tracks[_q.currentIndex + 1];
       if (_prefetchCache.containsKey(nextTrack.id)) return;
       if (_downloadManager.isDownloaded(nextTrack.id)) return; // No need to prefetch local
@@ -208,9 +217,52 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       try {
         print('[AudioHandler] Prefetching next track: ${nextTrack.title}');
         final streamResult = await _addonService.getStreamResult(
-            nextTrack.addonTrackId ?? nextTrack.id, addonId: nextTrack.addonId);
+          nextTrack.addonTrackId ?? nextTrack.id,
+          addonId: nextTrack.addonId,
+          isrc: nextTrack.isrc,
+        );
         if (streamResult != null && streamResult.url.isNotEmpty) {
           _prefetchCache[nextTrack.id] = streamResult;
+
+          // Pre-fetch audio bytes in the background so transition is gapless.
+          final fmt = streamResult.format?.toLowerCase();
+          final man = streamResult.manifest?.toLowerCase();
+          final isDash = man == 'dash' ||
+              fmt == 'dash' ||
+              streamResult.url.contains('<MPD') ||
+              streamResult.url.contains('.mpd');
+          if (!kIsWeb && !isDash) {
+            if (_streamCache.isEnabled &&
+                _streamCache.lookup(nextTrack) == null) {
+              _prefetchedHandle?.cancel();
+              _prefetchedHandle = null;
+              _prefetchedHandleTrackId = null;
+              final handle = await _streamCache.open(
+                nextTrack,
+                streamResult.url,
+                format: fmt,
+                quality: streamResult.quality,
+                headers: const {'User-Agent': 'BeatBoss/1.0 (Flutter)'},
+              );
+              if (handle != null) {
+                _prefetchedHandle = handle;
+                _prefetchedHandleTrackId = nextTrack.id;
+              }
+            } else {
+              // Warm TCP/TLS + CDN edge cache with a small range fetch.
+              unawaited(() async {
+                try {
+                  final client = HttpClient();
+                  final req = await client.getUrl(Uri.parse(streamResult.url));
+                  req.headers.set('User-Agent', 'BeatBoss/1.0 (Flutter)');
+                  req.headers.set('Range', 'bytes=0-262143');
+                  final resp = await req.close();
+                  await resp.drain<void>();
+                  client.close();
+                } catch (_) {}
+              }());
+            }
+          }
           print('[AudioHandler] Prefetch complete for: ${nextTrack.title}');
         }
       } catch (e) {
@@ -357,19 +409,25 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     late final Future<void> pending;
     pending = autoplaySupplier!(_seedsForBatch(), List.of(_q.tracks))
         .then((tracks) {
-      if (generation != _queueGeneration) {
-        print('[Autoplay] dropped a batch: the queue changed meanwhile');
+      if (generation != _queueGeneration || !_autoplayAllowed) {
+        print('[Autoplay] dropped a batch: the queue or repeat mode changed meanwhile');
         return;
       }
-      if (tracks.isEmpty) {
+      final existing = {
+        for (final t in _q.tracks) matchKey(t.artist, t.title),
+      };
+      final fresh = tracks
+          .where((t) => existing.add(matchKey(t.artist, t.title)))
+          .toList();
+      if (fresh.isEmpty) {
         _autoplayRetryAfter = DateTime.now().add(_autoplayBackoff);
-        print('[Autoplay] found no playable similar songs');
+        print('[Autoplay] found no new playable similar songs');
         return;
       }
       _autoplayRetryAfter = null;
-      _q.appendAutoplay(tracks);
+      _q.appendAutoplay(fresh);
       _broadcastQueue();
-      print('[Autoplay] added ${tracks.length} tracks to the queue');
+      print('[Autoplay] added ${fresh.length} tracks to the queue');
     }).catchError((Object e) {
       _autoplayRetryAfter = DateTime.now().add(_autoplayBackoff);
       print('[Autoplay] failed: $e');
@@ -441,6 +499,9 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> stop() async {
+    _lastRequestId++;
+    _queueGeneration++;
+    _pendingAutoplay = null;
     _isSwitchingTrack = false; // nothing is loading any more
     _releaseCacheHandle();
     if (kIsWeb) {
@@ -469,6 +530,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> skipToNext() async {
     if (_q.isEmpty) return;
+    final requestId = _lastRequestId;
     // On the last track, wait for autoplay to supply more. Ignore extra taps
     // while waiting so they don't skip twice.
     if (!_q.hasNext && _player.loopMode != LoopMode.all) {
@@ -479,6 +541,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       } finally {
         _isAdvancing = false;
       }
+      if (requestId != _lastRequestId || _q.isEmpty) return;
     }
     int nextIndex = _q.currentIndex + 1;
     if (_player.loopMode == LoopMode.all && nextIndex >= _q.length) {
@@ -629,6 +692,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
     final track = _q.tracks[index];
     final requestId = ++_lastRequestId;
     _isSwitchingTrack = true;
+    _currentStreamResult = null;
     _releaseCacheHandle();
 
     // Instantly update UI metadata and set to buffering while we fetch the stream
@@ -657,9 +721,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       await _player.stop();
       // Crucial 500ms delay: allows ntdll.dll to fully reap the DASH segment-
       // fetching threads and release WASAPI handles + file cache locks.
-      // Without this, the second stream writes to memory the OS still considers
-      // owned by the dying first stream's workers.
-      if (!kIsWeb) {
+      if (!kIsWeb && _isDashActive) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
     } catch (e) {
@@ -700,17 +762,26 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
                audioUrl = streamResult?.url;
             } else {
                streamResult = await _addonService.getStreamResult(
-                 track.addonTrackId ?? track.id, addonId: track.addonId);
+                 track.addonTrackId ?? track.id,
+                 addonId: track.addonId,
+                 isrc: track.isrc,
+               );
                audioUrl = streamResult?.url;
             }
             if (requestId != _lastRequestId) return;
+            _currentStreamResult = streamResult;
 
             String? url = streamResult?.url;
             final format = streamResult?.format?.toLowerCase();
+            final manifestType = streamResult?.manifest?.toLowerCase();
             if (url == null || url.trim().isEmpty) throw Exception('No stream URL found');
 
             // Native redirect resolution
-            if (!kIsWeb && url.startsWith('http') && format != 'dash' && !url.contains('.mpd')) {
+            if (!kIsWeb &&
+                url.startsWith('http') &&
+                manifestType != 'dash' &&
+                format != 'dash' &&
+                !url.contains('.mpd')) {
               try {
                 final client = HttpClient();
                 final request = await client.headUrl(Uri.parse(url));
@@ -726,7 +797,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
             }
 
             final String finalUrl = url!;
-            final bool isDash = (format == 'dash' || finalUrl.contains('<MPD') || finalUrl.contains('.mpd'));
+            final bool isDash = (manifestType == 'dash' ||
+                format == 'dash' ||
+                finalUrl.contains('<MPD') ||
+                finalUrl.contains('.mpd'));
 
             if (isDash) {
               if (requestId != _lastRequestId) return;
@@ -776,6 +850,15 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
               if (kIsWeb) DashService.stop();
               audioUrl = finalUrl;
               if (!kIsWeb && !skipCache) {
+                if (_prefetchedHandleTrackId == track.id &&
+                    _prefetchedHandle != null) {
+                  _cacheHandle = _prefetchedHandle;
+                  directUrl = finalUrl;
+                  audioUrl = _prefetchedHandle!.playbackUrl;
+                  _prefetchedHandle = null;
+                  _prefetchedHandleTrackId = null;
+                  break;
+                }
                 // Route the stream through the local cache proxy; any failure
                 // here just means this track plays uncached.
                 try {
@@ -827,10 +910,13 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
             print('[AudioHandler] Cached file failed to open ($e), streaming instead.');
             _streamCache.invalidate(track);
             if (requestId == _lastRequestId) {
-              await _playQueueItem(index,
-                  startPosition: startPosition,
-                  skipCache: true,
-                  direction: direction);
+              final liveIndex = _q.tracks.indexWhere((t) => identical(t, track));
+              if (liveIndex >= 0) {
+                await _playQueueItem(liveIndex,
+                    startPosition: startPosition,
+                    skipCache: true,
+                    direction: direction);
+              }
             }
             return;
           }
@@ -857,7 +943,7 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         _failureStreak = 0;
       } else if (requestId == _lastRequestId) {
         print('[AudioHandler] Failed to resolve playable audio URL for track: ${track.title}');
-        _handleLoadFailure(index, direction, requestId);
+        await _handleLoadFailure(track, index, direction, requestId);
       }
     } catch (e, st) {
       if (requestId != _lastRequestId) {
@@ -867,28 +953,42 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
       } else {
         print('[AudioHandler] CRITICAL PLAYBACK ERROR: $e');
         print(st);
-        _handleLoadFailure(index, direction, requestId);
+        await _handleLoadFailure(track, index, direction, requestId);
       }
     } finally {
       print('[AudioHandler] --- Playback Init Complete [ID: $requestId] ---');
     }
   }
 
-  /// The track at [index] could not be loaded. If it is still the latest
-  /// request, move on to the next track in the same [direction] (at most 3 in
-  /// a row), otherwise stop cleanly instead of sitting in "buffering" forever.
-  void _handleLoadFailure(int index, int direction, int requestId) {
+  /// The [failedTrack] at [fallbackIndex] could not be loaded. If it is still
+  /// the latest request, move on to the next track in the same [direction]
+  /// (at most 3 in a row), otherwise stop cleanly instead of sitting in
+  /// "buffering" forever.
+  Future<void> _handleLoadFailure(
+      Track failedTrack, int fallbackIndex, int direction, int requestId) async {
     if (requestId != _lastRequestId) return; // a newer request owns the player
     _isSwitchingTrack = false;
     _failureStreak++;
-    final next = index + direction;
+    final currentPos = _q.tracks.indexWhere((t) => identical(t, failedTrack));
+    final baseIndex = currentPos >= 0 ? currentPos : fallbackIndex;
+    var next = baseIndex + direction;
+    if (_failureStreak <= _maxFailureSkips &&
+        direction > 0 &&
+        next >= _q.length &&
+        _pendingAutoplay != null) {
+      await _awaitPendingAutoplay();
+      if (requestId != _lastRequestId) return;
+      final refreshedPos =
+          _q.tracks.indexWhere((t) => identical(t, failedTrack));
+      next = (refreshedPos >= 0 ? refreshedPos : baseIndex) + direction;
+    }
     if (_failureStreak <= _maxFailureSkips && next >= 0 && next < _q.length) {
       print('[AudioHandler] Skipping an unplayable track, trying #$next');
       _playQueueItem(next, direction: direction);
     } else {
       print('[AudioHandler] Giving up after $_failureStreak unplayable tracks');
       _failureStreak = 0;
-      _broadcastState();
+      await stop();
     }
   }
 
@@ -1017,6 +1117,10 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
     if (name == 'dispose') {
+      _settingsService.removeListener(_onSettingsChanged);
+      _prefetchedHandle?.cancel();
+      _prefetchedHandle = null;
+      _prefetchedHandleTrackId = null;
       _releaseCacheHandle();
       for (final sub in _subscriptions) {
         sub.cancel();

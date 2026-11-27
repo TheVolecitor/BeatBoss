@@ -61,14 +61,14 @@ class QueueControls extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 4),
             child: Row(
               children: [
-                const Icon(Icons.radio, size: 18, color: AppTheme.primaryGreen),
+                Icon(Icons.radio, size: 18, color: AppTheme.primaryGreen),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Radio · ${radio.title}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.primaryGreen,
                       fontWeight: FontWeight.w600,
                     ),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
 import '../../core/services/stream_cache_service.dart';
+import '../../core/utils/app_toast.dart';
 import '../shared/track_list_tile.dart';
 
 String _formatBytes(int bytes) {
@@ -96,7 +97,15 @@ class CacheScreen extends StatelessWidget {
                       tracks: tracks,
                       index: index,
                       removeLabel: 'Remove from Cache',
-                      onRemove: () => cache.remove(track),
+                      onRemove: () {
+                        if (!cache.remove(track)) {
+                          AppToast.show(
+                            context,
+                            'Cannot remove track while it is playing',
+                            isError: true,
+                          );
+                        }
+                      },
                       onPlay: () => context
                           .read<AudioPlayerService>()
                           .playAll(tracks, startIndex: index),

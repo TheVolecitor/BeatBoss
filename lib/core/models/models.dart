@@ -14,6 +14,7 @@ class Track {
   final String? addonId;
   final String? addonTrackId; // Original track ID within the addon
   final String? streamURL; // Pre-resolved stream URL (Eclipse spec optional field)
+  final String? isrc; // ISRC code for cross-addon matching & metadata
   final String? infoText; // Extra info text to display next to artist
 
   Track({
@@ -30,6 +31,7 @@ class Track {
     this.addonId,
     this.addonTrackId,
     this.streamURL,
+    this.isrc,
     this.infoText,
   });
 
@@ -56,6 +58,9 @@ class Track {
       addonId: json['addonId'],
       addonTrackId: json['addonTrackId'],
       streamURL: json['streamURL'] ?? json['url'],
+      isrc: (json['isrc'] is String && (json['isrc'] as String).trim().isNotEmpty)
+          ? (json['isrc'] as String).trim()
+          : null,
       infoText: json['infoText'] ?? json['infotext'],
     );
   }
@@ -74,6 +79,7 @@ class Track {
       'addonId': addonId,
       'addonTrackId': addonTrackId,
       'streamURL': streamURL,
+      if (isrc != null) 'isrc': isrc,
     };
   }
 

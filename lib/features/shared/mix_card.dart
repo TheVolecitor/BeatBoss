@@ -106,7 +106,9 @@ class MixCard extends StatelessWidget {
                             child: Padding(
                               padding: const EdgeInsets.all(8),
                               child: Icon(Icons.play_arrow_rounded,
-                                  size: 24, color: scheme.onPrimary),
+                                  size: 24,
+                                  color: scheme.onPrimary,
+                                  semanticLabel: 'Play $title'),
                             ),
                           ),
                         ),

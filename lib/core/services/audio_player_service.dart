@@ -3,10 +3,12 @@ import 'package:audio_service/audio_service.dart';
 import 'dart:async';
 
 import '../models/models.dart';
+import '../models/addon_models.dart';
 import 'addon_service.dart';
 import 'audio_handler.dart';
 import 'history_service.dart';
 import 'last_fm_service.dart';
+import 'listenbrainz_service.dart';
 
 import 'discord_rpc_service.dart';
 
@@ -42,6 +44,45 @@ class AudioPlayerService with ChangeNotifier {
   // Custom LoopMode mirroring AudioService RepeatMode
   LoopMode _loopMode = LoopMode.off;
   bool _shuffleEnabled = false;
+
+  String? _qualityLabel;
+  String? _qualityDetail;
+  StreamQualityTier? _qualityTier;
+
+  String? get qualityLabel {
+    if (qualityTier == StreamQualityTier.hiRes) return 'Hi-Res';
+    if (_qualityLabel != null) return _qualityLabel;
+    final aq = _currentTrack?.audioQuality;
+    if (aq == null) return null;
+    if (aq.maximumBitDepth == 16) return 'Lossless';
+    return null;
+  }
+
+  String? get qualityDetail => _qualityDetail ?? _currentTrack?.audioQuality?.displayText;
+  StreamQualityTier? get qualityTier {
+    if (_qualityTier == StreamQualityTier.atmos) return StreamQualityTier.atmos;
+    final aq = _currentTrack?.audioQuality;
+    if (_qualityTier == StreamQualityTier.hiRes ||
+        (aq != null &&
+            (aq.isHiRes ||
+                (aq.maximumBitDepth != null && aq.maximumBitDepth! > 16) ||
+                (aq.maximumSamplingRate != null && aq.maximumSamplingRate! > 44.1)))) {
+      return StreamQualityTier.hiRes;
+    }
+    if (_qualityTier != null) return _qualityTier;
+    if (aq == null) return null;
+    if (aq.maximumBitDepth == 16) return StreamQualityTier.lossless;
+    return StreamQualityTier.standard;
+  }
+
+  String? get providerAddonName {
+    final id = _currentTrack?.addonId;
+    if (id == null || id.isEmpty) return null;
+    final match =
+        _addonService.installedAddons.where((a) => a.id == id).firstOrNull;
+    if (match != null) return _addonService.displayNameFor(match);
+    return id;
+  }
 
   // Lyrics
   List<LyricLine> _lyrics = [];
@@ -100,6 +141,7 @@ class AudioPlayerService with ChangeNotifier {
 
   final HistoryService _historyService;
   final LastFmService _lastFmService;
+  final ListenBrainzService? _listenBrainzService;
   final DiscordRpcService _discordRpcService; // Discord
   bool _hasScrobbled = false;
 
@@ -108,11 +150,13 @@ class AudioPlayerService with ChangeNotifier {
     required AddonService addonService,
     required HistoryService historyService,
     required LastFmService lastFmService,
+    ListenBrainzService? listenBrainzService,
     required DiscordRpcService discordRpcService,
   })  : _handler = handler,
         _addonService = addonService,
         _historyService = historyService,
         _lastFmService = lastFmService,
+        _listenBrainzService = listenBrainzService,
         _discordRpcService = discordRpcService {
     _init();
   }
@@ -163,6 +207,11 @@ class AudioPlayerService with ChangeNotifier {
         _currentIndex = state.queueIndex!;
       }
 
+      final streamRes = _handler.currentStreamResult;
+      _qualityLabel = streamRes?.qualityLabel;
+      _qualityDetail = streamRes?.qualityDetail;
+      _qualityTier = streamRes?.qualityTier;
+
       if (_isPlaying != state.playing) {
         _isPlaying = state.playing;
         _updateDiscordPresence(debounced: true); // Update Discord on Play/Pause
@@ -200,9 +249,10 @@ class AudioPlayerService with ChangeNotifier {
           _fetchLyrics(_currentTrack!);
           _historyService.addPlayed(_currentTrack!);
 
-          // Last.fm: Update Now Playing & Reset Scrobble
+          // Last.fm & ListenBrainz: Update Now Playing & Reset Scrobble
           _hasScrobbled = false;
           _lastFmService.updateNowPlaying(_currentTrack!);
+          _listenBrainzService?.updateNowPlaying(_currentTrack!);
           _updateDiscordPresence(debounced: true);
         }
       } else {
@@ -246,12 +296,14 @@ class AudioPlayerService with ChangeNotifier {
       _position = _loadingNewTrack ? Duration.zero : pos;
       _updateCurrentLyric();
 
-      // Last.fm Scrobble Logic
+      // Last.fm & ListenBrainz Scrobble Logic
       if (!_hasScrobbled && _currentTrack != null && _duration.inSeconds > 30) {
         final thresholdSeconds = (_duration.inSeconds / 2).clamp(0, 240).toDouble();
         if (pos.inSeconds >= thresholdSeconds) {
           _hasScrobbled = true;
-          _lastFmService.scrobble(_currentTrack!, timestamp: DateTime.now());
+          final now = DateTime.now();
+          _lastFmService.scrobble(_currentTrack!, timestamp: now);
+          _listenBrainzService?.scrobble(_currentTrack!, timestamp: now);
         }
       }
 
@@ -280,13 +332,17 @@ class AudioPlayerService with ChangeNotifier {
     await _handler.setRequestQueue([track]);
   }
 
+  int _radioRequest = 0;
+
   /// Plays [seed] and keeps adding similar songs after it (a "song radio").
   /// Returns how many songs are queued after it; 0 means none were found.
   Future<int> startRadio(Track seed) async {
+    final request = ++_radioRequest;
     _radioSeed = seed;
     _autoplaySeed = seed;
     notifyListeners();
     final queued = await _handler.startRadio(seed);
+    if (request != _radioRequest) return queued; // a newer radio owns the seed
     if (queued == 0) {
       // Nothing found: don't leave the radio showing as active.
       _radioSeed = null;

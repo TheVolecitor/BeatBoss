@@ -99,21 +99,13 @@ class AutoplayController {
     if (pool.length < target) {
       final artists = await recs.similarArtistsOf(seed.artist, limit: 5);
       for (final artist in artists.take(3)) {
+        if (!recs.sourceEnabled) break;
         final top = await provider.artistTopTracks(artist.name, limit: 10);
         pool = filterCandidates([...pool, ...top], exclude);
         if (pool.length >= target) break;
       }
       print('[Autoplay] after similar artists: ${pool.length} usable');
     }
-
-    // 3. The seed artist's own top songs.
-    if (pool.length < want) {
-      final top = await recs.topTracksOf(seed.artist, limit: 20);
-      pool = filterCandidates([...pool, ...top], exclude);
-      print('[Autoplay] after the artist\'s top songs: ${pool.length} usable');
-    }
-
-    if (pool.isEmpty) return const [];
 
     // Shuffle the best matches a little so the radio isn't identical each time.
     final head = pool.take(30).toList()..shuffle(_random);
@@ -122,14 +114,36 @@ class AutoplayController {
     final result = <Track>[];
     final taken = <String>{};
     var tried = 0;
-    await for (final (_, track) in recs.resolver.resolveMany(pool)) {
-      tried++;
-      if (track == null) continue;
-      final key = matchKey(track.artist, track.title);
-      if (exclude.contains(key) || !taken.add(key)) continue;
-      result.add(track);
-      if (result.length >= want) break; // cancels the remaining searches
+
+    Future<void> resolveFrom(List<RecTrack> candidates) async {
+      await for (final (_, track) in recs.resolver.resolveMany(candidates)) {
+        tried++;
+        if (track == null) continue;
+        final key = matchKey(track.artist, track.title);
+        if (exclude.contains(key) || !taken.add(key)) continue;
+        result.add(track);
+        if (result.length >= want) break; // cancels the remaining searches
+      }
     }
+
+    if (pool.isNotEmpty) {
+      await resolveFrom(pool);
+    }
+
+    // 3. The seed artist's own top songs, if playable results are still short.
+    if (result.length < want && recs.sourceEnabled) {
+      final seenPool = {
+        for (final c in pool) matchKey(c.artist, c.title),
+      };
+      final top = await recs.topTracksOf(seed.artist, limit: 20);
+      final extra = filterCandidates(top, {...exclude, ...seenPool});
+      print('[Autoplay] after the artist\'s top songs: ${extra.length} usable');
+      if (extra.isNotEmpty) {
+        await resolveFrom(extra);
+      }
+    }
+
+    if (result.isEmpty && pool.isEmpty) return const [];
     print('[Autoplay] found ${result.length} playable songs '
         'after searching for $tried (active addon: ${recs.resolver.activeAddonId})');
     return result;

@@ -23,10 +23,15 @@ class HomeHeader extends StatelessWidget {
   }
 }
 
-/// Shown when no Last.fm account is connected.
+/// Shown when no recommendation account is connected.
 class ConnectBanner extends StatelessWidget {
   final VoidCallback onConnect;
-  const ConnectBanner({super.key, required this.onConnect});
+  final String providerName;
+  const ConnectBanner({
+    super.key,
+    required this.onConnect,
+    this.providerName = 'Last.fm',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -53,9 +58,9 @@ class ConnectBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Connect Last.fm',
+                Text('Connect $providerName',
                     style:
-                        TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                 const SizedBox(height: 2),
                 Text('Get mixes made from your listening.',
                     style: TextStyle(

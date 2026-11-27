@@ -8,6 +8,7 @@ import '../../../core/recommendations/track_matching.dart';
 import '../../../core/services/addon_service.dart';
 import '../../../core/services/audio_player_service.dart';
 import '../../search/search_screen.dart';
+import '../../shared/addon_detail_screen.dart';
 import '../../shared/media_card.dart';
 import '../../shared/mix_card.dart';
 import '../../shared/quick_pick_tile.dart';
@@ -175,15 +176,26 @@ class AddonCatalogSection extends StatelessWidget {
         if (albums.isNotEmpty) ...[
           ShelfSection(
             title: 'Albums',
-            height: 215,
-            itemWidth: 140,
+            height: kCardRowHeight,
             children: [
               for (final album in albums)
-                SizedBox(
-                  width: 140,
-                  child: AddonAlbumCard(
-                      album: album,
-                      isDark: Theme.of(context).brightness == Brightness.dark),
+                MediaCard(
+                  key: ValueKey('catalog-album-${album.id}'),
+                  imageUrl: album.artworkURL,
+                  title: album.title,
+                  subtitle: album.artist,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AddonDetailScreen(
+                        id: album.id,
+                        type: AddonDetailType.album,
+                        addonId: album.addonId,
+                        initialTitle: album.title,
+                        initialArtwork: album.artworkURL,
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -192,15 +204,29 @@ class AddonCatalogSection extends StatelessWidget {
         if (playlists.isNotEmpty) ...[
           ShelfSection(
             title: 'Playlists',
-            height: 215,
-            itemWidth: 140,
+            height: kCardRowHeight,
             children: [
               for (final playlist in playlists)
-                SizedBox(
-                  width: 140,
-                  child: AddonPlaylistCard(
-                      playlist: playlist,
-                      isDark: Theme.of(context).brightness == Brightness.dark),
+                MediaCard(
+                  key: ValueKey('catalog-playlist-${playlist.id}'),
+                  imageUrl: playlist.artworkURL,
+                  title: playlist.title,
+                  subtitle: playlist.creator ??
+                      (playlist.trackCount != null
+                          ? '${playlist.trackCount} tracks'
+                          : null),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AddonDetailScreen(
+                        id: playlist.id,
+                        type: AddonDetailType.playlist,
+                        addonId: playlist.addonId,
+                        initialTitle: playlist.title,
+                        initialArtwork: playlist.artworkURL,
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -238,17 +264,48 @@ class RecentlyPlayedSection extends StatelessWidget {
   }
 }
 
-/// What's popular right now, with a "Load more" in its full list.
+/// What's popular right now, with rank badges, timeframe selector (ListenBrainz),
+/// and "Load more" in its full list.
 class ChartsSection extends StatelessWidget {
   final HomeController controller;
   const ChartsSection({super.key, required this.controller});
 
+  static const _ranges = [
+    ('week', 'This week'),
+    ('month', 'This month'),
+    ('all_time', 'All time'),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return TrackShelfSection(
+    final shelfWidget = TrackShelfSection(
       shelf: controller.charts,
       loading: controller.loading && controller.sourceEnabled,
       loadMore: context.read<RecommendationService>().moreCharts,
+    );
+
+    if (!controller.supportsChartRanges) return shelfWidget;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        shelfWidget,
+        if (controller.charts.hasData) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final (value, label) in _ranges)
+                ChoiceChip(
+                  label: Text(label, style: const TextStyle(fontSize: 12)),
+                  selected: controller.chartRange == value,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => controller.setChartRange(value),
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

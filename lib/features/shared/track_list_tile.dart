@@ -126,18 +126,22 @@ class TrackListTile extends StatelessWidget {
             ),
             if (showInfoText && track.infoText != null && track.infoText!.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white10 : Colors.black12,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  track.infoText!,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white54 : Colors.black54,
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white10 : Colors.black12,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    track.infoText!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white54 : Colors.black54,
+                    ),
                   ),
                 ),
               ),
@@ -226,7 +230,7 @@ class TrackListTile extends StatelessWidget {
 
     if (isDownloaded) {
       return IconButton(
-        icon: const Icon(Icons.check_circle, color: AppTheme.primaryGreen),
+        icon: Icon(Icons.check_circle, color: AppTheme.primaryGreen),
         onPressed: () {}, // Already downloaded
         tooltip: 'Downloaded',
       );
@@ -244,7 +248,7 @@ class TrackListTile extends StatelessWidget {
               strokeWidth: 3,
               backgroundColor: isDark ? Colors.white10 : Colors.black12,
               valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
+                  AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
             ),
             if (progress != null)
               Text(
