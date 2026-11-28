@@ -8,11 +8,14 @@ import '../../core/theme/app_theme.dart';
 import '../../core/models/addon_models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
+import '../../core/services/youtube_music_addon_handler.dart';
+import '../../core/services/ytmusic_innertube.dart';
 import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_list.dart';
 import 'artwork_theme.dart';
 import 'now_playing_actions.dart';
 import '../queue/queue_widgets.dart';
+import '../shared/marquee_text.dart';
 import 'player_seekbar.dart';
 
 class DesktopFullscreenPlayer extends StatefulWidget {
@@ -25,6 +28,21 @@ class DesktopFullscreenPlayer extends StatefulWidget {
 class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
   int _selectedIndex = 0; // 0 = Queue, 1 = Lyrics
   double? _dragProportion;
+  String? _hdTrackId;
+  String? _hdArtworkUrl;
+
+  void _ensureFullResArtwork(String trackId, String? addonId) {
+    if (_hdTrackId == trackId) return;
+    _hdTrackId = trackId;
+    _hdArtworkUrl = null;
+    if (addonId != YouTubeMusicAddonHandler.addonId) return;
+    YtMusicInnerTube().getTrackArtwork(trackId).then((url) {
+      if (!mounted || _hdTrackId != trackId || url == null || url.isEmpty) {
+        return;
+      }
+      setState(() => _hdArtworkUrl = url);
+    });
+  }
 
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;
@@ -34,7 +52,8 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.watch<SettingsService>().isDarkMode;
+    final settings = context.watch<SettingsService>();
+    final isDark = settings.isDarkMode;
     final player = context.watch<AudioPlayerService>();
     final track = player.currentTrack;
 
@@ -46,6 +65,11 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
       });
       return const SizedBox.shrink();
     }
+
+    _ensureFullResArtwork(track.id, track.addonId);
+    final displayArt = (_hdTrackId == track.id && _hdArtworkUrl != null)
+        ? _hdArtworkUrl!
+        : track.displayImage;
 
 
     return Focus(
@@ -74,25 +98,29 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
       child: Scaffold(
         backgroundColor: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
       body: ArtworkTheme(
-        imageUrl: track.displayImage,
+        imageUrl: displayArt,
+        enabled: settings.useDynamicPlayerColors,
         builder: (context, scheme) => Stack(
         children: [
           // Blurred background
-          if (track.displayImage.isNotEmpty)
+          if (settings.playerShowBgArt && displayArt.isNotEmpty)
             Positioned.fill(
               child: CachedNetworkImage(
-                imageUrl: track.displayImage,
+                imageUrl: displayArt,
                 fit: BoxFit.cover,
                 memCacheWidth: 400,
               ),
             ),
           Positioned.fill(
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+              filter: ImageFilter.blur(
+                sigmaX: settings.playerBgBlur,
+                sigmaY: settings.playerBgBlur,
+              ),
               child: ArtworkGradient(
                 scheme: scheme,
                 base: isDark ? Colors.black : Colors.white,
-                opacity: 0.75,
+                opacity: settings.playerGradientOpacity,
                 child: const SizedBox.expand(),
               ),
             ),
@@ -129,7 +157,9 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                 color: isDark ? Colors.white70 : Colors.black54,
                               ),
                               onSelected: (value) {
-                                if (value == 'radio') {
+                                if (value == 'artist') {
+                                  openArtistForTrack(context, track);
+                                } else if (value == 'radio') {
                                   toggleRadio(context, player, track);
                                 } else if (value.startsWith('seekbar:')) {
                                   settings.setSeekbarStyle(
@@ -137,6 +167,16 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                 }
                               },
                               itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: 'artist',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.person_outline, size: 18),
+                                      SizedBox(width: 10),
+                                      Text('Go to Artist'),
+                                    ],
+                                  ),
+                                ),
                                 PopupMenuItem(
                                   value: 'radio',
                                   child: Row(
@@ -145,7 +185,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                         Icons.radio,
                                         size: 18,
                                         color: player.radioSeed != null
-                                            ? AppTheme.primaryGreen
+                                            ? scheme.primary
                                             : null,
                                       ),
                                       const SizedBox(width: 10),
@@ -163,27 +203,22 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold)),
                                 ),
-                                for (final style in const [
-                                  ('normal', 'Normal'),
-                                  ('sleek', 'Sleek'),
-                                  ('waveform', 'Waveform'),
-                                  ('heartbeat', 'Heartbeat'),
-                                ])
+                                for (final style in PlayerSeekBar.styles)
                                   PopupMenuItem(
-                                    value: 'seekbar:${style.$1}',
+                                    value: 'seekbar:${style.id}',
                                     child: Row(
                                       children: [
                                         Icon(
-                                          settings.seekbarStyle == style.$1
+                                          settings.seekbarStyle == style.id
                                               ? Icons.check_rounded
                                               : Icons.circle_outlined,
                                           size: 16,
-                                          color: settings.seekbarStyle == style.$1
-                                              ? AppTheme.primaryGreen
+                                          color: settings.seekbarStyle == style.id
+                                              ? scheme.primary
                                               : null,
                                         ),
                                         const SizedBox(width: 10),
-                                        Text(style.$2),
+                                        Text(style.label),
                                       ],
                                     ),
                                   ),
@@ -202,16 +237,18 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                 child: Container(
                                   constraints: const BoxConstraints(maxHeight: 1200, maxWidth: 1200),
                                   decoration: BoxDecoration(
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.4),
-                                        blurRadius: 40,
-                                        offset: const Offset(0, 20),
-                                      )
-                                    ],
-                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: settings.playerArtShadow
+                                        ? [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.4),
+                                              blurRadius: 40,
+                                              offset: const Offset(0, 20),
+                                            )
+                                          ]
+                                        : null,
+                                    borderRadius: BorderRadius.circular(settings.playerArtRadius),
                                     image: DecorationImage(
-                                      image: CachedNetworkImageProvider(track.displayImage, maxWidth: 800),
+                                      image: CachedNetworkImageProvider(displayArt, maxWidth: 1200),
                                       fit: BoxFit.cover,
                                     ),
                                   ),
@@ -229,7 +266,7 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                 tag: 'player_bar_title_${track.id}',
                                 child: Material(
                                   type: MaterialType.transparency,
-                                  child: Text(
+                                  child: MarqueeText(
                                     track.title,
                                     style: TextStyle(
                                       color: isDark ? Colors.white : Colors.black,
@@ -238,31 +275,34 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                       height: 1.1,
                                     ),
                                     textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Hero(
-                                tag: 'player_bar_artist_${track.id}',
-                                child: Material(
-                                  type: MaterialType.transparency,
-                                  child: Text(
-                                    track.artist,
-                                    style: TextStyle(
-                                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.7),
-                                      fontSize: 21,
-                                      fontWeight: FontWeight.w500,
+                              MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: GestureDetector(
+                                  onTap: () => openArtistForTrack(context, track),
+                                  child: Hero(
+                                    tag: 'player_bar_artist_${track.id}',
+                                    child: Material(
+                                      type: MaterialType.transparency,
+                                      child: MarqueeText(
+                                        track.artist,
+                                        style: TextStyle(
+                                          color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.7),
+                                          fontSize: 21,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
                                     ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ),
-                              if (player.providerAddonName != null ||
-                                  player.qualityLabel != null) ...[
+                              if (settings.showQualityBadges &&
+                                  (player.providerAddonName != null ||
+                                      player.qualityLabel != null)) ...[
                                 const SizedBox(height: 12),
                                 Wrap(
                                   spacing: 8,
@@ -311,6 +351,10 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                       bufferedValue: player.bufferedSliderValue,
                                       seed: track.id,
                                       isDark: isDark,
+                                      isPlaying: player.isPlaying,
+                                      accentColor: scheme.primary,
+                                      trackHeight: settings.seekbarHeight,
+                                      wavyAmplitude: settings.wavyAmplitude,
                                       onChanged: player.seekToSlider,
                                     ),
                                   ),
@@ -383,17 +427,6 @@ class _DesktopFullscreenPlayerState extends State<DesktopFullscreenPlayer> {
                                   iconSize: 28,
                                   color: player.loopMode != LoopMode.off ? scheme.primary : (isDark ? Colors.white54 : Colors.black54),
                                   onPressed: player.toggleLoop,
-                                ),
-                                const SizedBox(width: 24),
-                                GoToArtistButton(
-                                  track: track,
-                                  color: isDark ? Colors.white54 : Colors.black54,
-                                ),
-                                const SizedBox(width: 8),
-                                RadioButton(
-                                  track: track,
-                                  color: isDark ? Colors.white54 : Colors.black54,
-                                  activeColor: scheme.primary,
                                 ),
                               ],
                             ),

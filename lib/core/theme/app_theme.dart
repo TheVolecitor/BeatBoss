@@ -12,6 +12,12 @@ class AppTheme {
     (name: 'Crimson Rose', color: Color(0xFFF43F5E)),
     (name: 'Amber Gold', color: Color(0xFFF59E0B)),
     (name: 'Ocean Teal', color: Color(0xFF14B8A6)),
+    (name: 'Coral Orange', color: Color(0xFFFF6B35)),
+    (name: 'Indigo', color: Color(0xFF5C6BC0)),
+    (name: 'Hot Pink', color: Color(0xFFEC4899)),
+    (name: 'Cyan', color: Color(0xFF06B6D4)),
+    (name: 'Lime', color: Color(0xFF84CC16)),
+    (name: 'Silver', color: Color(0xFFE5E7EB)),
   ];
 
   static const Color darkBackground = Color(0xFF020202);

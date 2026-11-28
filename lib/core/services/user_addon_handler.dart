@@ -30,10 +30,10 @@ abstract class UserAddonHandler {
   /// Fetch full playlist detail (tracks list). Returns null if not supported.
   Future<AddonPlaylist?> getPlaylistDetail(String playlistId) async => null;
 
-  /// Fetch synced/unsynced lyrics in LRC format.
+  /// Fetch synced/unsynced lyrics in LRC format (or plain text).
   /// Return null if the addon does not support lyrics.
   Future<String?> getLyrics(String artist, String title,
-      {String? album, int? duration}) async =>
+      {String? album, int? duration, String? trackId}) async =>
       null;
 
 

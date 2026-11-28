@@ -8,9 +8,15 @@ import '../../core/services/artwork_palette_service.dart';
 /// one song's colors to the next instead of flashing back to the default.
 class ArtworkTheme extends StatefulWidget {
   final String? imageUrl;
+  final bool enabled;
   final Widget Function(BuildContext context, ColorScheme scheme) builder;
 
-  const ArtworkTheme({super.key, required this.imageUrl, required this.builder});
+  const ArtworkTheme({
+    super.key,
+    required this.imageUrl,
+    this.enabled = true,
+    required this.builder,
+  });
 
   @override
   State<ArtworkTheme> createState() => _ArtworkThemeState();
@@ -33,24 +39,38 @@ class _ArtworkThemeState extends State<ArtworkTheme> {
   @override
   void didUpdateWidget(ArtworkTheme old) {
     super.didUpdateWidget(old);
-    if (old.imageUrl != widget.imageUrl) _load();
+    if (old.imageUrl != widget.imageUrl || old.enabled != widget.enabled) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
+    if (!widget.enabled) {
+      if (_scheme != null) setState(() => _scheme = null);
+      return;
+    }
     final url = widget.imageUrl;
     final brightness = _brightness!;
     final scheme = await context
         .read<ArtworkPaletteService>()
         .schemeFor(url, brightness);
     // Ignore an answer for a cover that is no longer showing.
-    if (!mounted || url != widget.imageUrl || brightness != _brightness) return;
+    if (!mounted ||
+        !widget.enabled ||
+        url != widget.imageUrl ||
+        brightness != _brightness) {
+      return;
+    }
     // No cover or a failed load falls back to the app colors.
     if (scheme != _scheme) setState(() => _scheme = scheme);
   }
 
   @override
-  Widget build(BuildContext context) =>
-      widget.builder(context, _scheme ?? Theme.of(context).colorScheme);
+  Widget build(BuildContext context) => widget.builder(
+      context,
+      widget.enabled
+          ? (_scheme ?? Theme.of(context).colorScheme)
+          : Theme.of(context).colorScheme);
 }
 
 /// Background for the player: a gradient from the cover's container color to

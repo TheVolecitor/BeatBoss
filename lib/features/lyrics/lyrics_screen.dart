@@ -1,17 +1,22 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/settings_service.dart';
+import '../player/artwork_theme.dart';
+import '../shared/marquee_text.dart';
 
-/// Lyrics Screen - scrollable lyrics display matching original
+/// Lyrics Screen - album-themed draggable lyrics card for mobile fullscreen.
 class LyricsScreen extends StatelessWidget {
   const LyricsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
+    final player = context.watch<AudioPlayerService>();
+    final track = player.currentTrack;
     final isDark = settings.isDarkMode;
 
     return DraggableScrollableSheet(
@@ -21,14 +26,89 @@ class LyricsScreen extends StatelessWidget {
       snap: true,
       snapSizes: const [0.7, 1.0],
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? AppTheme.darkCard : AppTheme.lightCard,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: LyricsList(
-            scrollController: scrollController,
-            isDark: isDark,
+        return ArtworkTheme(
+          imageUrl: track?.displayImage,
+          enabled: settings.useDynamicPlayerColors,
+          builder: (context, scheme) => ArtworkGradient(
+            scheme: scheme,
+            base: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  // Drag handle
+                  Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 6),
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.white : Colors.black)
+                          .withValues(alpha: 0.24),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  // Compact track header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 6, 18, 12),
+                    child: Row(
+                      children: [
+                        if (track != null && track.displayImage.isNotEmpty) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: track.displayImage,
+                              width: 42,
+                              height: 42,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 160,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              MarqueeText(
+                                track?.title ?? 'Lyrics',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : Colors.black,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (track != null)
+                                MarqueeText(
+                                  track.artist,
+                                  style: TextStyle(
+                                    color: (isDark ? Colors.white : Colors.black)
+                                        .withValues(alpha: 0.6),
+                                    fontSize: 13,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(
+                    height: 1,
+                    color: (isDark ? Colors.white : Colors.black)
+                        .withValues(alpha: 0.08),
+                  ),
+                  Expanded(
+                    child: LyricsList(
+                      scrollController: scrollController,
+                      isDark: isDark,
+                      showHeader: false,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -55,6 +135,8 @@ class LyricsList extends StatefulWidget {
 class _LyricsListState extends State<LyricsList> {
   late ScrollController _autoScrollController;
   int _prevIndex = -1;
+  String? _prevTrackId;
+  final Map<int, GlobalKey> _itemKeys = {};
   // ignore: unused_field
   final bool _userScrolled = false;
 
@@ -84,6 +166,12 @@ class _LyricsListState extends State<LyricsList> {
   Widget build(BuildContext context) {
     final player = context.watch<AudioPlayerService>();
     final track = player.currentTrack;
+
+    if (track?.id != _prevTrackId) {
+      _prevTrackId = track?.id;
+      _itemKeys.clear();
+      _prevIndex = -1;
+    }
 
     // Auto-scroll logic
     if (player.currentLyricIndex != _prevIndex) {
@@ -171,8 +259,12 @@ class _LyricsListState extends State<LyricsList> {
               (context, index) {
                 final lyric = player.lyrics[index];
                 final isActive = index == player.currentLyricIndex;
+                final settings = context.watch<SettingsService>();
+                final baseSize = settings.lyricsFontSize;
+                final key = _itemKeys.putIfAbsent(index, () => GlobalKey());
 
                 return GestureDetector(
+                  key: key,
                   onTap: () => player.seekToLyric(index),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
@@ -182,12 +274,15 @@ class _LyricsListState extends State<LyricsList> {
                     child: AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOutCubic,
-                      textAlign: TextAlign.center,
+                      textAlign: settings.lyricsCentered
+                          ? TextAlign.center
+                          : TextAlign.left,
                       style: TextStyle(
                         color: isActive
                             ? (widget.isDark ? Colors.white : Colors.black)
-                            : (widget.isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2)),
-                        fontSize: isActive ? 28 : 20,
+                            : (widget.isDark ? Colors.white : Colors.black)
+                                .withValues(alpha: settings.lyricsDimOpacity),
+                        fontSize: isActive ? baseSize + 8 : baseSize,
                         fontWeight:
                             isActive ? FontWeight.bold : FontWeight.w600,
                         height: 1.4,
@@ -212,30 +307,31 @@ class _LyricsListState extends State<LyricsList> {
   }
 
   void _scrollToIndex(int index) {
-    if (!_autoScrollController.hasClients) return;
+    if (!mounted || !_autoScrollController.hasClients) return;
 
-    // Estimate height: header ~100 + lines
-    // Better: index * 60 (approx line height).
-    // Center it in viewport.
-
-    // Header height approx 80-100.
-    const double headerHeight = 100.0;
-    const double approxLineHeight = 60.0;
-
-    double offset = headerHeight + (index * approxLineHeight);
-
-    double viewportHeight = _autoScrollController.position.viewportDimension;
-    double centeredOffset = offset - viewportHeight / 2;
-
-    if (centeredOffset < 0) centeredOffset = 0;
-    if (centeredOffset > _autoScrollController.position.maxScrollExtent) {
-      centeredOffset = _autoScrollController.position.maxScrollExtent;
+    final ctx = _itemKeys[index]?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.45,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOutCubic,
+      );
+      return;
     }
 
+    // Fallback when target row hasn't been laid out yet in SliverList.
+    final baseSize = context.read<SettingsService>().lyricsFontSize;
+    final approxLineHeight = 32.0 + baseSize * 1.4;
+    final headerHeight = widget.showHeader ? 90.0 : 0.0;
+    final viewportHeight = _autoScrollController.position.viewportDimension;
+    var target = headerHeight + (index * approxLineHeight) - viewportHeight * 0.45;
+    target = target.clamp(0.0, _autoScrollController.position.maxScrollExtent);
+
     _autoScrollController.animateTo(
-      centeredOffset,
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
+      target,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOutCubic,
     );
   }
 }

@@ -47,12 +47,10 @@ class _AppShellState extends State<AppShell> {
     _requestNotificationPermission();
     _noticeSub = context.read<AddonService>().onNotice.listen((event) {
       if (!mounted) return;
-      final n = event.notice;
-      final prefix = n.title != null ? '${n.title}: ' : '';
-      AppToast.show(
+      AppToast.showNotice(
         context,
-        '${event.addon.name} — $prefix${n.message}',
-        isError: n.level == 'error' || n.level == 'warning',
+        addonName: context.read<AddonService>().displayNameFor(event.addon),
+        notice: event.notice,
       );
     });
 

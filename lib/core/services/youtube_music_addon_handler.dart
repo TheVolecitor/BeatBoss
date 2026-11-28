@@ -3,32 +3,39 @@ import 'package:darttubefix/darttubefix.dart';
 import '../models/addon_models.dart';
 import 'settings_service.dart';
 import 'user_addon_handler.dart';
+import 'ytmusic_innertube.dart';
 
-/// Built-in YouTube Music addon powered by `darttubefix`.
-/// Provides search and direct audio stream resolution, with user-configurable
-/// Eclipse-style settings (audio quality & codec preference).
+/// Built-in YouTube Music addon powered by `WEB_REMIX` InnerTube + `darttubefix`.
+/// Provides YouTube Music search (tracks, albums, artists, playlists),
+/// catalog detail pages, and direct audio stream resolution.
 class YouTubeMusicAddonHandler extends UserAddonHandler {
   static const String addonId = 'com.beatboss.ytmusic';
 
   final SettingsService _settings;
+  final YtMusicInnerTube _ytm;
 
-  YouTubeMusicAddonHandler({required SettingsService settingsService})
-      : _settings = settingsService;
+  YouTubeMusicAddonHandler({
+    required SettingsService settingsService,
+    YtMusicInnerTube? innerTube,
+  })  : _settings = settingsService,
+        _ytm = innerTube ?? YtMusicInnerTube();
 
   @override
   AddonManifest get manifest => AddonManifest(
         id: addonId,
         name: 'YouTube Music',
-        version: '1.0.0',
+        version: '1.1.0',
         description:
-            'Built-in YouTube Music search and audio playback via darttubefix.',
+            'Built-in YouTube Music search (songs, albums, artists, playlists) and audio playback.',
         icon: 'assets/yt_music_icon.png',
         resources: const [
           AddonResource.search,
           AddonResource.stream,
+          AddonResource.catalog,
+          AddonResource.lyrics,
           AddonResource.settings,
         ],
-        types: const ['track'],
+        types: const ['track', 'album', 'artist', 'playlist'],
         contentType: AddonContentType.music,
         addonType: AddonType.user,
         installedAt: DateTime.now(),
@@ -69,11 +76,14 @@ class YouTubeMusicAddonHandler extends UserAddonHandler {
   @override
   Future<AddonSearchResult?> search(String query) async {
     try {
-      final search = Search(query);
+      final ytmResult = await _ytm.search(query, addonId: addonId);
+      if (!ytmResult.isEmpty) return ytmResult;
+
+      // Fallback to darttubefix WEB_MUSIC search if InnerTube returned empty.
+      final search = Search(query, client: 'WEB_MUSIC');
       await search.fetch();
-      final videos = search.videos;
       final tracks = <AddonTrack>[];
-      for (final yt in videos.take(20)) {
+      for (final yt in search.videos.take(20)) {
         final id = yt.videoId;
         if (id.isEmpty) continue;
         tracks.add(AddonTrack(
@@ -87,7 +97,43 @@ class YouTubeMusicAddonHandler extends UserAddonHandler {
           addonId: addonId,
         ));
       }
-      return AddonSearchResult(tracks: tracks);
+      final artists = [
+        for (final a in search.artists)
+          if (a.channelId.isNotEmpty)
+            AddonArtist(
+              id: a.channelId,
+              name: a.title,
+              artworkURL: a.thumbnail.isNotEmpty ? a.thumbnail : null,
+              addonId: addonId,
+            ),
+      ];
+      final albums = [
+        for (final al in search.albums)
+          if (al.playlistId.isNotEmpty)
+            AddonAlbum(
+              id: al.playlistId,
+              title: al.title,
+              artist: 'YouTube Music',
+              artworkURL: al.thumbnail.isNotEmpty ? al.thumbnail : null,
+              addonId: addonId,
+            ),
+      ];
+      final playlists = [
+        for (final pl in search.playlists)
+          if (pl.playlistId.isNotEmpty)
+            AddonPlaylist(
+              id: pl.playlistId,
+              title: pl.title,
+              artworkURL: pl.thumbnail.isNotEmpty ? pl.thumbnail : null,
+              addonId: addonId,
+            ),
+      ];
+      return AddonSearchResult(
+        tracks: tracks,
+        albums: albums,
+        artists: artists,
+        playlists: playlists,
+      );
     } catch (e) {
       print('[YouTubeMusicAddon] Search error: $e');
       return null;
@@ -95,7 +141,42 @@ class YouTubeMusicAddonHandler extends UserAddonHandler {
   }
 
   @override
+  Future<AddonAlbum?> getAlbumDetail(String albumId) =>
+      _ytm.getAlbumDetail(albumId, addonId: addonId);
+
+  @override
+  Future<AddonArtist?> getArtistDetail(String artistId) =>
+      _ytm.getArtistDetail(artistId, addonId: addonId);
+
+  @override
+  Future<AddonPlaylist?> getPlaylistDetail(String playlistId) =>
+      _ytm.getPlaylistDetail(playlistId, addonId: addonId);
+
+  @override
+  Future<String?> getLyrics(String artist, String title,
+      {String? album, int? duration, String? trackId}) async {
+    try {
+      if (trackId != null && trackId.isNotEmpty) {
+        final direct = await _ytm.getLyrics(trackId);
+        if (direct != null && direct.isNotEmpty) return direct;
+      }
+      final searchRes = await _ytm.search('$artist $title', addonId: addonId);
+      for (final t in searchRes.tracks.take(2)) {
+        if (t.id == trackId) continue;
+        final lyrics = await _ytm.getLyrics(t.id);
+        if (lyrics != null && lyrics.isNotEmpty) return lyrics;
+      }
+    } catch (e) {
+      print('[YouTubeMusicAddon] getLyrics error: $e');
+    }
+    return null;
+  }
+
+  static final _ytIdRe = RegExp(r'^[0-9A-Za-z_-]{11}$');
+
+  @override
   Future<AddonStreamResult?> getStreamResult(String trackId) async {
+    if (!_ytIdRe.hasMatch(trackId)) return null;
     final stored = _settings.getAddonSettings(addonId);
     final preferOpus =
         stored['preferOpus'] == true || stored['preferOpus']?.toString() == 'true';

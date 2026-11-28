@@ -49,6 +49,7 @@ class AudioPlayerService with ChangeNotifier {
   String? _qualityLabel;
   String? _qualityDetail;
   StreamQualityTier? _qualityTier;
+  String? _providerAddonId;
 
   String? get qualityLabel {
     if (qualityTier == StreamQualityTier.hiRes) return 'Hi-Res';
@@ -77,7 +78,9 @@ class AudioPlayerService with ChangeNotifier {
   }
 
   String? get providerAddonName {
-    final id = _currentTrack?.addonId;
+    final id = _providerAddonId ??
+        _handler.currentStreamResult?.providerAddonId ??
+        _currentTrack?.addonId;
     if (id == null || id.isEmpty) return null;
     final match =
         _addonService.installedAddons.where((a) => a.id == id).firstOrNull;
@@ -213,6 +216,7 @@ class AudioPlayerService with ChangeNotifier {
       _qualityLabel = streamRes?.qualityLabel;
       _qualityDetail = streamRes?.qualityDetail;
       _qualityTier = streamRes?.qualityTier;
+      _providerAddonId = streamRes?.providerAddonId;
 
       if (_isPlaying != state.playing) {
         _isPlaying = state.playing;
@@ -244,18 +248,19 @@ class AudioPlayerService with ChangeNotifier {
           _loadingNewTrack = true;
           _position = Duration.zero;
           _bufferedPosition = Duration.zero;
-        }
+          _providerAddonId = null;
 
-        // New Track Logic
-        if (_currentTrack != null) {
-          _fetchLyrics(_currentTrack!);
-          _historyService.addPlayed(_currentTrack!);
+          // New Track Logic
+          if (_currentTrack != null) {
+            _fetchLyrics(_currentTrack!);
+            _historyService.addPlayed(_currentTrack!);
 
-          // Last.fm & ListenBrainz: Update Now Playing & Reset Scrobble
-          _hasScrobbled = false;
-          _lastFmService.updateNowPlaying(_currentTrack!);
-          _listenBrainzService?.updateNowPlaying(_currentTrack!);
-          _updateDiscordPresence(debounced: true);
+            // Last.fm & ListenBrainz: Update Now Playing & Reset Scrobble
+            _hasScrobbled = false;
+            _lastFmService.updateNowPlaying(_currentTrack!);
+            _listenBrainzService?.updateNowPlaying(_currentTrack!);
+            _updateDiscordPresence(debounced: true);
+          }
         }
       } else {
         _currentTrack = null;
@@ -499,13 +504,12 @@ class AudioPlayerService with ChangeNotifier {
 
     try {
       final lrcText = await _addonService.getLyrics(
-        track.artist, 
-        track.title, 
+        track.artist,
+        track.title,
         album: track.albumTitle,
         duration: track.duration,
         addonId: track.addonId ?? 'net.lrclib',
-
-
+        trackId: track.addonTrackId ?? track.id,
       );
 
       if (lrcText != null) {
@@ -547,11 +551,20 @@ class AudioPlayerService with ChangeNotifier {
       }
     }
     result.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    if (result.isEmpty && lrcText.trim().isNotEmpty) {
+      for (final line in lrcText.split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.isNotEmpty) {
+          result.add(LyricLine(timestamp: Duration.zero, text: trimmed));
+        }
+      }
+    }
     return result;
   }
 
   void _updateCurrentLyric() {
     if (_lyrics.isEmpty) return;
+    if (_lyrics.every((l) => l.timestamp == Duration.zero)) return;
     int newIndex = -1;
     for (int i = 0; i < _lyrics.length; i++) {
       // Small offset for better sync visual

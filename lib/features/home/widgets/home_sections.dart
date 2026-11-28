@@ -184,8 +184,18 @@ class AddonCatalogSection extends StatelessWidget {
     final tracks = controller.catalogTracks;
     final albums = controller.catalogAlbums;
     final playlists = controller.catalogPlaylists;
-    final addonName =
-        context.read<AddonService>().activeAddon?.name ?? 'your addon';
+    final providerAddonId = tracks.firstOrNull?.addonId ??
+        albums.firstOrNull?.addonId ??
+        playlists.firstOrNull?.addonId;
+    final addons = context.read<AddonService>();
+    final providerAddon = providerAddonId != null
+        ? addons.installedAddons
+            .where((a) => a.id == providerAddonId)
+            .firstOrNull
+        : null;
+    final addonName = providerAddon != null
+        ? addons.displayNameFor(providerAddon)
+        : (addons.activeAddon?.name ?? 'your addon');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

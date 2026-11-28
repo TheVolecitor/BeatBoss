@@ -107,13 +107,14 @@ class AddonsScreen extends StatelessWidget {
 
   Widget _buildAddonsList(
       BuildContext context, AddonService addonService, bool isDark) {
+    final total = addonService.installedAddons.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
           child: Text(
-            'Drag to set fallback priority. Toggle an addon off to temporarily disable it.',
+            'Use the arrows to set fallback priority. Toggle an addon off to temporarily disable it.',
             style: TextStyle(
               fontSize: 12.5,
               color: isDark ? Colors.white54 : Colors.black54,
@@ -121,16 +122,9 @@ class AddonsScreen extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: ReorderableListView.builder(
+          child: ListView.builder(
             padding: const EdgeInsets.all(16),
-            buildDefaultDragHandles: false,
-            itemCount: addonService.installedAddons.length,
-            onReorder: (oldIndex, newIndex) {
-              if (oldIndex < newIndex) {
-                newIndex -= 1;
-              }
-              addonService.reorderAddons(oldIndex, newIndex);
-            },
+            itemCount: total,
             itemBuilder: (context, index) {
               final addon = addonService.installedAddons[index];
               final isActive = addonService.activeAddonId == addon.id;
@@ -139,44 +133,22 @@ class AddonsScreen extends StatelessWidget {
               return Padding(
                 key: ValueKey(addon.id),
                 padding: const EdgeInsets.only(bottom: 14),
-                child: Row(
-                  children: [
-                    ReorderableDragStartListener(
-                      index: index,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8.0, left: 4.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.drag_indicator_rounded,
-                                color: Colors.grey),
-                            Text(
-                              '#${index + 1}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white38 : Colors.black38,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: _AddonCard(
-                        addon: addon,
-                        displayName: addonService.displayNameFor(addon),
-                        isActive: isActive,
-                        isEnabled: isEnabled,
-                        isDark: isDark,
-                        onToggleEnabled: (val) =>
-                            addonService.setAddonEnabled(addon.id, val),
-                        onSetActive: () => addonService.setActiveAddon(addon.id),
-                        onUninstall: () =>
-                            _confirmUninstall(context, addonService, addon),
-                      ),
-                    ),
-                  ],
+                child: _AddonCard(
+                  addon: addon,
+                  displayName: addonService.displayNameFor(addon),
+                  isActive: isActive,
+                  isEnabled: isEnabled,
+                  isDark: isDark,
+                  canMoveUp: index > 0,
+                  canMoveDown: index < total - 1,
+                  onMoveUp: () => addonService.reorderAddons(index, index - 1),
+                  onMoveDown: () =>
+                      addonService.reorderAddons(index, index + 1),
+                  onToggleEnabled: (val) =>
+                      addonService.setAddonEnabled(addon.id, val),
+                  onSetActive: () => addonService.setActiveAddon(addon.id),
+                  onUninstall: () =>
+                      _confirmUninstall(context, addonService, addon),
                 ),
               );
             },
@@ -227,6 +199,10 @@ class _AddonCard extends StatelessWidget {
   final bool isActive;
   final bool isEnabled;
   final bool isDark;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
   final ValueChanged<bool> onToggleEnabled;
   final VoidCallback onSetActive;
   final VoidCallback onUninstall;
@@ -237,6 +213,10 @@ class _AddonCard extends StatelessWidget {
     required this.isActive,
     required this.isEnabled,
     required this.isDark,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onMoveUp,
+    required this.onMoveDown,
     required this.onToggleEnabled,
     required this.onSetActive,
     required this.onUninstall,
@@ -297,11 +277,16 @@ class _AddonCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            displayName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                          Padding(
+                            padding: EdgeInsets.only(right: isActive ? 124 : 64),
+                            child: Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -416,93 +401,144 @@ class _AddonCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: () async {
-                            try {
-                              final reloaded =
-                                  await addonService.reloadAddon(addon.id);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'Reloaded ${reloaded.name} (v${reloaded.version})'),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Reload failed: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          icon: const Icon(Icons.refresh_rounded, size: 20),
-                          tooltip: 'Reload Manifest',
-                        ),
-                        IconButton(
-                          onPressed: () =>
-                              _showAddonSettingsDialog(context, addon),
-                          icon: const Icon(Icons.settings_outlined, size: 20),
-                          tooltip: 'Addon Settings',
-                        ),
-                        if (!addon.isBuiltIn)
-                          IconButton(
-                            onPressed: onUninstall,
-                            icon: const Icon(Icons.delete_outline,
-                                size: 20, color: Colors.red),
-                            tooltip: 'Uninstall',
-                          ),
-                        if (isEnabled && !isActive && addon.supportsSearch) ...[
-                          const SizedBox(width: 4),
-                          ElevatedButton(
-                            onPressed: onSetActive,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryGreen
-                                  .withValues(alpha: isDark ? 0.2 : 0.15),
-                              foregroundColor: AppTheme.primaryGreen,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          spacing: 2,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          alignment: WrapAlignment.end,
+                          children: [
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () async {
+                                try {
+                                  final reloaded =
+                                      await addonService.reloadAddon(addon.id);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            'Reloaded ${reloaded.name} (v${reloaded.version})'),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Reload failed: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.refresh_rounded, size: 20),
+                              tooltip: 'Reload Manifest',
                             ),
-                            child: const Text('Set Active',
-                                style: TextStyle(fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ],
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () =>
+                                  _showAddonSettingsDialog(context, addon),
+                              icon: const Icon(Icons.settings_outlined,
+                                  size: 20),
+                              tooltip: 'Addon Settings',
+                            ),
+                            if (!addon.isBuiltIn)
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: onUninstall,
+                                icon: const Icon(Icons.delete_outline,
+                                    size: 20, color: Colors.red),
+                                tooltip: 'Uninstall',
+                              ),
+                            if (isEnabled && !isActive && addon.supportsSearch)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: ElevatedButton(
+                                  onPressed: onSetActive,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primaryGreen
+                                        .withValues(alpha: isDark ? 0.2 : 0.15),
+                                    foregroundColor: AppTheme.primaryGreen,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 8),
+                                  ),
+                                  child: const Text('Set Active',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w600)),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          if (isActive)
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'ACTIVE',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isActive)
+                  Container(
+                    margin: const EdgeInsets.only(right: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'ACTIVE',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
+                  tooltip: 'Move up',
+                  onPressed: canMoveUp ? onMoveUp : null,
+                  icon: Icon(
+                    Icons.keyboard_arrow_up_rounded,
+                    size: 20,
+                    color: canMoveUp
+                        ? (isDark ? Colors.white70 : Colors.black54)
+                        : (isDark ? Colors.white12 : Colors.black12),
                   ),
                 ),
-              ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
+                  tooltip: 'Move down',
+                  onPressed: canMoveDown ? onMoveDown : null,
+                  icon: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: canMoveDown
+                        ? (isDark ? Colors.white70 : Colors.black54)
+                        : (isDark ? Colors.white12 : Colors.black12),
+                  ),
+                ),
+              ],
             ),
+          ),
         ],
       ),
     ),
@@ -778,9 +814,11 @@ Widget _buildSettingField({
         padding: const EdgeInsets.all(16),
         child: DropdownButtonFormField<String>(
           initialValue: valid,
+          isExpanded: true,
           decoration: InputDecoration(
             labelText: field.label,
             helperText: field.help,
+            helperMaxLines: 3,
             filled: true,
             fillColor: (isDark ? Colors.white : Colors.black)
                 .withValues(alpha: 0.04),
@@ -791,7 +829,14 @@ Widget _buildSettingField({
           ),
           items: [
             for (final opt in field.options)
-              DropdownMenuItem(value: opt.value, child: Text(opt.label)),
+              DropdownMenuItem(
+                value: opt.value,
+                child: Text(
+                  opt.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
           ],
           onChanged: (v) {
             if (v != null) onChanged(field.key, v);

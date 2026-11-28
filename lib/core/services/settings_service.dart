@@ -33,6 +33,22 @@ class SettingsService extends ChangeNotifier {
   static const String _keyRemovedBuiltins = 'removed_builtins';
   static const String _keyAccentColor = 'accent_color';
   static const String _keySeekbarStyle = 'seekbar_style';
+  static const String _keyUseDynamicPlayerColors = 'dynamic_player_colors';
+  static const String _keyCompactTrackList = 'compact_track_list';
+  static const String _keyPlayerArtRadius = 'player_art_radius';
+  static const String _keyPlayerBgBlur = 'player_bg_blur';
+  static const String _keyPlayerGradientOpacity = 'player_gradient_opacity';
+  static const String _keyCardRadius = 'card_radius';
+  static const String _keyShowTrackArtInLists = 'show_track_art_in_lists';
+  static const String _keyShowQualityBadges = 'show_quality_badges';
+  static const String _keyLyricsFontSize = 'lyrics_font_size';
+  static const String _keySeekbarHeight = 'seekbar_height';
+  static const String _keyWavyAmplitude = 'wavy_amplitude';
+  static const String _keyPlayerArtShadow = 'player_art_shadow';
+  static const String _keyPlayerShowBgArt = 'player_show_bg_art';
+  static const String _keyLyricsCentered = 'lyrics_centered';
+  static const String _keyLyricsDimOpacity = 'lyrics_dim_opacity';
+  static const String _keyEnableMarquee = 'enable_marquee';
 
   // Local stream cache
   static const String _keyLocalCacheEnabled = 'local_cache_enabled';
@@ -65,12 +81,158 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fullscreen player seekbar style: 'normal', 'sleek', 'waveform', 'heartbeat'.
+  /// Fullscreen player seekbar style: 'normal', 'wavy', 'sleek', 'waveform', 'heartbeat', 'bars'.
   String get seekbarStyle =>
       (_box.get(_keySeekbarStyle, defaultValue: 'normal') as String?) ?? 'normal';
 
   Future<void> setSeekbarStyle(String style) async {
     await _box.put(_keySeekbarStyle, style);
+    notifyListeners();
+  }
+
+  bool get useDynamicPlayerColors =>
+      (_box.get(_keyUseDynamicPlayerColors, defaultValue: true) as bool?) ??
+      true;
+
+  Future<void> setUseDynamicPlayerColors(bool value) async {
+    await _box.put(_keyUseDynamicPlayerColors, value);
+    notifyListeners();
+  }
+
+  bool get compactTrackList =>
+      (_box.get(_keyCompactTrackList, defaultValue: false) as bool?) ?? false;
+
+  Future<void> setCompactTrackList(bool value) async {
+    await _box.put(_keyCompactTrackList, value);
+    notifyListeners();
+  }
+
+  double get playerBgBlur =>
+      ((_box.get(_keyPlayerBgBlur, defaultValue: 50.0) as num?)?.toDouble() ??
+              50.0)
+          .clamp(0.0, 90.0);
+
+  Future<void> setPlayerBgBlur(double sigma) async {
+    await _box.put(_keyPlayerBgBlur, sigma.clamp(0.0, 90.0));
+    notifyListeners();
+  }
+
+  double get playerGradientOpacity =>
+      ((_box.get(_keyPlayerGradientOpacity, defaultValue: 0.75) as num?)
+                  ?.toDouble() ??
+              0.75)
+          .clamp(0.35, 0.95);
+
+  Future<void> setPlayerGradientOpacity(double value) async {
+    await _box.put(_keyPlayerGradientOpacity, value.clamp(0.35, 0.95));
+    notifyListeners();
+  }
+
+  double get cardRadius =>
+      ((_box.get(_keyCardRadius, defaultValue: 12.0) as num?)?.toDouble() ??
+              12.0)
+          .clamp(0.0, 24.0);
+
+  Future<void> setCardRadius(double radius) async {
+    await _box.put(_keyCardRadius, radius.clamp(0.0, 24.0));
+    notifyListeners();
+  }
+
+  bool get showTrackArtInLists =>
+      (_box.get(_keyShowTrackArtInLists, defaultValue: true) as bool?) ?? true;
+
+  Future<void> setShowTrackArtInLists(bool value) async {
+    await _box.put(_keyShowTrackArtInLists, value);
+    notifyListeners();
+  }
+
+  bool get showQualityBadges =>
+      (_box.get(_keyShowQualityBadges, defaultValue: true) as bool?) ?? true;
+
+  Future<void> setShowQualityBadges(bool value) async {
+    await _box.put(_keyShowQualityBadges, value);
+    notifyListeners();
+  }
+
+  double get lyricsFontSize =>
+      ((_box.get(_keyLyricsFontSize, defaultValue: 20.0) as num?)?.toDouble() ??
+              20.0)
+          .clamp(14.0, 30.0);
+
+  Future<void> setLyricsFontSize(double size) async {
+    await _box.put(_keyLyricsFontSize, size.clamp(14.0, 30.0));
+    notifyListeners();
+  }
+
+  double get seekbarHeight =>
+      ((_box.get(_keySeekbarHeight, defaultValue: 3.5) as num?)?.toDouble() ??
+              3.5)
+          .clamp(2.0, 6.0);
+
+  Future<void> setSeekbarHeight(double h) async {
+    await _box.put(_keySeekbarHeight, h.clamp(2.0, 6.0));
+    notifyListeners();
+  }
+
+  double get wavyAmplitude =>
+      ((_box.get(_keyWavyAmplitude, defaultValue: 3.5) as num?)?.toDouble() ??
+              3.5)
+          .clamp(1.5, 6.0);
+
+  Future<void> setWavyAmplitude(double amp) async {
+    await _box.put(_keyWavyAmplitude, amp.clamp(1.5, 6.0));
+    notifyListeners();
+  }
+
+  bool get playerArtShadow =>
+      (_box.get(_keyPlayerArtShadow, defaultValue: true) as bool?) ?? true;
+
+  Future<void> setPlayerArtShadow(bool value) async {
+    await _box.put(_keyPlayerArtShadow, value);
+    notifyListeners();
+  }
+
+  bool get playerShowBgArt =>
+      (_box.get(_keyPlayerShowBgArt, defaultValue: true) as bool?) ?? true;
+
+  Future<void> setPlayerShowBgArt(bool value) async {
+    await _box.put(_keyPlayerShowBgArt, value);
+    notifyListeners();
+  }
+
+  bool get lyricsCentered =>
+      (_box.get(_keyLyricsCentered, defaultValue: true) as bool?) ?? true;
+
+  Future<void> setLyricsCentered(bool value) async {
+    await _box.put(_keyLyricsCentered, value);
+    notifyListeners();
+  }
+
+  double get lyricsDimOpacity =>
+      ((_box.get(_keyLyricsDimOpacity, defaultValue: 0.22) as num?)
+                  ?.toDouble() ??
+              0.22)
+          .clamp(0.10, 0.55);
+
+  Future<void> setLyricsDimOpacity(double opacity) async {
+    await _box.put(_keyLyricsDimOpacity, opacity.clamp(0.10, 0.55));
+    notifyListeners();
+  }
+
+  bool get enableMarquee =>
+      (_box.get(_keyEnableMarquee, defaultValue: true) as bool?) ?? true;
+
+  Future<void> setEnableMarquee(bool value) async {
+    await _box.put(_keyEnableMarquee, value);
+    notifyListeners();
+  }
+
+  double get playerArtRadius =>
+      ((_box.get(_keyPlayerArtRadius, defaultValue: 16.0) as num?)?.toDouble()) ??
+      16.0;
+
+  Future<void> setPlayerArtRadius(double value) async {
+    await _box.put(_keyPlayerArtRadius, value);
     notifyListeners();
   }
 

@@ -54,47 +54,63 @@ class LrcLibAddonHandler extends UserAddonHandler {
 
   @override
   Future<String?> getLyrics(String artist, String title,
-      {String? album, int? duration}) async {
+      {String? album, int? duration, String? trackId}) async {
+    final durSeconds = duration != null && duration > 10000
+        ? duration ~/ 1000
+        : duration;
     try {
       // 1. Try exact match first (/get)
       final response = await _dio.get('/get', queryParameters: {
         'artist_name': artist,
         'track_name': title,
         if (album != null && album.isNotEmpty) 'album_name': album,
-        if (duration != null && duration > 0) 'duration': duration,
+        if (durSeconds != null && durSeconds > 0) 'duration': durSeconds,
       });
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
-        // Prioritize synced lyrics
-        return data['syncedLyrics'] ?? data['plainLyrics'];
+        final text = (data['syncedLyrics'] ?? data['plainLyrics'])?.toString();
+        if (text != null && text.trim().isNotEmpty) return text;
       }
     } catch (e) {
-      if (e is DioException && e.response?.statusCode == 404) {
-        // Not found via exact match, try search fallback
-        return _searchFallback(artist, title);
+      if (e is! DioException || e.response?.statusCode != 404) {
+        print('[LRCLIB] getLyrics error: $e');
       }
-      print('[LRCLIB] getLyrics error: $e');
     }
-    return null;
+    return _searchFallback(artist, title);
+  }
+
+  String _cleanQueryPart(String input) {
+    return input
+        .replaceAll(RegExp(r'\s*-\s*Topic$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*[\(\[].*?[\)\]]'), '')
+        .replaceAll(RegExp(r'\s+(feat\.?|ft\.?|with)\s+.*$', caseSensitive: false), '')
+        .trim();
   }
 
   Future<String?> _searchFallback(String artist, String title) async {
-    try {
-      final response = await _dio.get('/search', queryParameters: {
-        'q': '$artist $title',
-      });
+    final primaryArtist = artist.split(RegExp(r'\s*[,&]\s*')).first.trim();
+    final queries = <String>{
+      '$artist $title'.trim(),
+      '${_cleanQueryPart(primaryArtist)} ${_cleanQueryPart(title)}'.trim(),
+      _cleanQueryPart(title),
+    }..removeWhere((q) => q.isEmpty);
 
-      if (response.statusCode == 200 && response.data is List && (response.data as List).isNotEmpty) {
-        // Take the first result that has lyrics
-        for (var item in response.data) {
-          if (item['syncedLyrics'] != null || item['plainLyrics'] != null) {
-            return item['syncedLyrics'] ?? item['plainLyrics'];
+    for (final q in queries) {
+      try {
+        final response = await _dio.get('/search', queryParameters: {'q': q});
+        if (response.statusCode == 200 &&
+            response.data is List &&
+            (response.data as List).isNotEmpty) {
+          for (final item in response.data) {
+            final text =
+                (item['syncedLyrics'] ?? item['plainLyrics'])?.toString();
+            if (text != null && text.trim().isNotEmpty) return text;
           }
         }
+      } catch (e) {
+        print('[LRCLIB] searchFallback error: $e');
       }
-    } catch (e) {
-      print('[LRCLIB] searchFallback error: $e');
     }
     return null;
   }

@@ -11,6 +11,7 @@ import '../../core/services/settings_service.dart';
 import '../../core/services/download_manager_service.dart';
 import '../../core/models/models.dart';
 import '../../core/utils/app_toast.dart';
+import 'marquee_text.dart';
 import 'track_menu.dart';
 
 /// Reusable Track List Tile - used across search, library, favourites
@@ -51,12 +52,12 @@ class TrackListTile extends StatelessWidget {
     final isPlaying = isCurrentTrack && player.isPlaying;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: EdgeInsets.symmetric(vertical: settings.compactTrackList ? 2 : 4),
       decoration: BoxDecoration(
         color: isCurrentTrack 
           ? (isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05))
           : (isDark ? AppTheme.darkCard : AppTheme.lightCard),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(settings.cardRadius),
         border: isCurrentTrack 
           ? Border.all(color: AppTheme.primaryGreen.withOpacity(0.3), width: 1)
           : null,
@@ -64,38 +65,48 @@ class TrackListTile extends StatelessWidget {
       child: Material(
         type: MaterialType.transparency,
         child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        leading: Stack(
-          children: [
-            _buildLeading(track),
-            if (isPlaying)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black38,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Center(
-                    child: _MusicVisualizer(color: Colors.white, size: 20),
-                  ),
-                ),
-              ),
-          ],
-        ),
+        dense: settings.compactTrackList,
+        contentPadding: EdgeInsets.symmetric(
+            horizontal: 12, vertical: settings.compactTrackList ? 0 : 4),
+        leading: settings.showTrackArtInLists
+            ? Stack(
+                children: [
+                  _buildLeading(track),
+                  if (isPlaying)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black38,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Center(
+                          child: _MusicVisualizer(color: Colors.white, size: 20),
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            : (isPlaying
+                ? const SizedBox(
+                    width: 28,
+                    child: Center(
+                      child: _MusicVisualizer(
+                          color: Colors.white, size: 20),
+                    ),
+                  )
+                : null),
         title: Row(
           children: [
             Expanded(
-              child: Text(
+              child: MarqueeText(
                 track.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontWeight: isCurrentTrack ? FontWeight.bold : FontWeight.w600,
                   color: isCurrentTrack ? AppTheme.primaryGreen : (isDark ? Colors.white : Colors.black87),
                 ),
               ),
             ),
-            if (track.isHiRes) ...[
+            if (settings.showQualityBadges && track.isHiRes) ...[
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -117,10 +128,8 @@ class TrackListTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Flexible(
-              child: Text(
+              child: MarqueeText(
                 track.artist,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: isCurrentTrack ? AppTheme.primaryGreen.withOpacity(0.7) : (isDark ? Colors.white54 : Colors.black54),
                 ),

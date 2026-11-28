@@ -685,6 +685,7 @@ class AddonStreamResult {
   final List<AddonChapter>? chapters;
   final AddonVideo? video;
   final AddonNotice? notice;
+  final String? providerAddonId;
 
   AddonStreamResult({
     required this.url,
@@ -700,7 +701,25 @@ class AddonStreamResult {
     this.chapters,
     this.video,
     this.notice,
+    this.providerAddonId,
   });
+
+  AddonStreamResult withProviderAddon(String addonId) => AddonStreamResult(
+        url: url,
+        format: format,
+        quality: quality,
+        expiresAt: expiresAt,
+        codec: codec,
+        container: container,
+        manifest: manifest,
+        encrypted: encrypted,
+        sampleRate: sampleRate,
+        bitDepth: bitDepth,
+        chapters: chapters,
+        video: video,
+        notice: notice,
+        providerAddonId: addonId,
+      );
 
   StreamQualityTier get qualityTier {
     final c = codec?.toLowerCase() ?? '';

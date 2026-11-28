@@ -7,7 +7,7 @@ import '../../core/theme/app_theme.dart';
 
 class AddonInstallDialog extends StatefulWidget {
   final String? initialUrl;
-  
+
   const AddonInstallDialog({super.key, this.initialUrl});
 
   static void show(BuildContext context, {String? initialUrl}) {
@@ -80,7 +80,6 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
             ],
           ),
           const SizedBox(height: 16),
-          
           if (_previewManifest == null) ...[
             TextField(
               controller: _urlController,
@@ -94,7 +93,7 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Enter the URL of an Eclipse Music compatible addon to install it.',
+              'Enter the URL of an manifest compatible addon to install it.',
               style: TextStyle(fontSize: 13, color: Colors.grey),
             ),
             const SizedBox(height: 24),
@@ -107,7 +106,8 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                          color: Colors.black, strokeWidth: 2),
                     )
                   : const Text('Fetch Manifest'),
             ),
@@ -136,7 +136,8 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                                color: Colors.black, strokeWidth: 2),
                           )
                         : const Text('Install'),
                   ),
@@ -174,9 +175,10 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.network(
-                          manifest.icon!, 
+                          manifest.icon!,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.extension),
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.extension),
                         ),
                       )
                     : const Icon(Icons.extension),
@@ -188,13 +190,15 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                   children: [
                     Text(
                       manifest.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.primaryGreen.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4),
@@ -226,7 +230,9 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
             const SizedBox(height: 12),
             Text(
               manifest.description!,
-              style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.black87),
+              style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white70 : Colors.black87),
             ),
           ],
           const SizedBox(height: 16),
@@ -242,7 +248,8 @@ class _AddonInstallDialogState extends State<AddonInstallDialog> {
                 ),
                 child: Text(
                   res.toUpperCase(),
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w600),
                 ),
               );
             }).toList(),

@@ -184,7 +184,15 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
         }
       }),
       _playerInstance!.durationStream.listen((duration) {
-        if (duration != null) _cacheHandle?.reportDuration(duration);
+        if (duration != null) {
+          _cacheHandle?.reportDuration(duration);
+          final current = mediaItem.value;
+          if (current != null &&
+              duration > Duration.zero &&
+              (current.duration == null || current.duration == Duration.zero)) {
+            mediaItem.add(current.copyWith(duration: duration));
+          }
+        }
         _broadcastState();
       }),
     ]);
@@ -220,6 +228,8 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
           nextTrack.addonTrackId ?? nextTrack.id,
           addonId: nextTrack.addonId,
           isrc: nextTrack.isrc,
+          title: nextTrack.title,
+          artist: nextTrack.artist,
         );
         if (streamResult != null && streamResult.url.isNotEmpty) {
           _prefetchCache[nextTrack.id] = streamResult;
@@ -769,6 +779,8 @@ class AppAudioHandler extends BaseAudioHandler with SeekHandler {
                  track.addonTrackId ?? track.id,
                  addonId: track.addonId,
                  isrc: track.isrc,
+                 title: track.title,
+                 artist: track.artist,
                );
                audioUrl = streamResult?.url;
             }

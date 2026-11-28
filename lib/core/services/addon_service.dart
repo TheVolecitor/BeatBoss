@@ -508,6 +508,8 @@ class AddonService extends ChangeNotifier {
     String trackId, {
     String? addonId,
     String? isrc,
+    String? title,
+    String? artist,
   }) async {
     // 1. If explicit addon provided, try it first
     if (addonId != null) {
@@ -523,12 +525,14 @@ class AddonService extends ChangeNotifier {
       if (addonId != null && manifest.id == addonId) continue;
       if (isAddonEnabled(manifest.id) && manifest.supportsStream) {
         var targetId = trackId;
-        if (addonId != null &&
-            isrc != null &&
-            isrc.trim().isNotEmpty &&
-            manifest.supportsIsrc) {
-          final resolved = await resolveIsrc(isrc, addonId: manifest.id);
-          if (resolved == null) continue;
+        if (addonId != null) {
+          final resolved = await _resolveFallbackTrackId(
+            manifest,
+            isrc: isrc,
+            title: title,
+            artist: artist,
+          );
+          if (resolved == null || resolved.isEmpty) continue;
           targetId = resolved;
         }
         final res = await _tryStreamResult(manifest, targetId);
@@ -539,12 +543,46 @@ class AddonService extends ChangeNotifier {
     return null;
   }
 
-  Future<AddonStreamResult?> _tryStreamResult(AddonManifest manifest, String trackId) async {
-    if (manifest.addonType == AddonType.user) {
-      return await _userHandlers[manifest.id]?.getStreamResult(trackId);
-    } else {
-      return await _serverGetStreamResult(manifest, trackId);
+  /// Resolves a foreign track onto [manifest] using ISRC -> /resolve -> search,
+  /// never reusing another addon's trackId.
+  Future<String?> _resolveFallbackTrackId(
+    AddonManifest manifest, {
+    String? isrc,
+    String? title,
+    String? artist,
+  }) async {
+    if (isrc != null && isrc.trim().isNotEmpty && manifest.supportsIsrc) {
+      final byIsrc = await resolveIsrc(isrc, addonId: manifest.id);
+      if (byIsrc != null && byIsrc.isNotEmpty) return byIsrc;
     }
+
+    final cleanTitle = title?.trim() ?? '';
+    if (cleanTitle.isEmpty) return null;
+
+    if (manifest.supportsResolve) {
+      final hit = await resolveTrack(
+        RecTrack(title: cleanTitle, artist: artist?.trim() ?? '', isrc: isrc),
+        addonId: manifest.id,
+      );
+      if (hit.handled) return hit.track?.id;
+    }
+
+    if (manifest.supportsSearch) {
+      final q = '${artist?.trim() ?? ''} $cleanTitle'.trim();
+      final res = await search(q, addonId: manifest.id, limit: 5);
+      if (res != null && res.tracks.isNotEmpty) {
+        return res.tracks.first.id;
+      }
+    }
+
+    return null;
+  }
+
+  Future<AddonStreamResult?> _tryStreamResult(AddonManifest manifest, String trackId) async {
+    final res = manifest.addonType == AddonType.user
+        ? await _userHandlers[manifest.id]?.getStreamResult(trackId)
+        : await _serverGetStreamResult(manifest, trackId);
+    return res?.withProviderAddon(manifest.id);
   }
 
   Future<AddonStreamResult?> _serverGetStreamResult(
@@ -591,70 +629,54 @@ class AddonService extends ChangeNotifier {
       if (addonId != null && manifest.id != addonId) continue;
       if (!isAddonEnabled(manifest.id)) continue;
 
-      if (manifest.supportsCatalog && manifest.addonType == AddonType.server) {
+      if (manifest.supportsCatalog &&
+          manifest.addonType == AddonType.server &&
+          manifest.catalogs.isNotEmpty) {
         // Eclipse spec: manifest declares `catalogs` rows -> GET /catalog/{id}?skip=0
-        if (manifest.catalogs.isNotEmpty) {
-          final tracks = <AddonTrack>[];
-          final albums = <AddonAlbum>[];
-          final artists = <AddonArtist>[];
-          final playlists = <AddonPlaylist>[];
-          for (final cat in manifest.catalogs) {
-            try {
-              final response = await _dio.get(
-                '${manifest.baseUrl}/catalog/${cat.id}',
-                queryParameters: {
-                  ..._settingsQuery(manifest),
-                  'skip': 0,
-                },
-              );
-              if (response.statusCode == 200 && response.data != null) {
-                _emitNoticeFromData(manifest, response.data);
-                final data = _toMap(response.data);
-                final items = (data['items'] as List<dynamic>?) ?? const [];
-                for (final raw in items.whereType<Map>()) {
-                  final map = Map<String, dynamic>.from(raw);
-                  final itemType = map['type']?.toString() ?? cat.type;
-                  switch (itemType) {
-                    case 'album':
-                      albums.add(AddonAlbum.fromJson(map, addonId: manifest.id));
-                    case 'artist':
-                      artists.add(AddonArtist.fromJson(map, addonId: manifest.id));
-                    case 'playlist':
-                      playlists.add(AddonPlaylist.fromJson(map, addonId: manifest.id));
-                    default:
-                      tracks.add(AddonTrack.fromJson(map, addonId: manifest.id));
-                  }
+        final tracks = <AddonTrack>[];
+        final albums = <AddonAlbum>[];
+        final artists = <AddonArtist>[];
+        final playlists = <AddonPlaylist>[];
+        for (final cat in manifest.catalogs) {
+          try {
+            final response = await _dio.get(
+              '${manifest.baseUrl}/catalog/${cat.id}',
+              queryParameters: {
+                ..._settingsQuery(manifest),
+                'skip': 0,
+              },
+            );
+            if (response.statusCode == 200 && response.data != null) {
+              _emitNoticeFromData(manifest, response.data);
+              final data = _toMap(response.data);
+              final items = (data['items'] as List<dynamic>?) ?? const [];
+              for (final raw in items.whereType<Map>()) {
+                final map = Map<String, dynamic>.from(raw);
+                final itemType = map['type']?.toString() ?? cat.type;
+                switch (itemType) {
+                  case 'album':
+                    albums.add(AddonAlbum.fromJson(map, addonId: manifest.id));
+                  case 'artist':
+                    artists.add(AddonArtist.fromJson(map, addonId: manifest.id));
+                  case 'playlist':
+                    playlists.add(
+                        AddonPlaylist.fromJson(map, addonId: manifest.id));
+                  default:
+                    tracks.add(AddonTrack.fromJson(map, addonId: manifest.id));
                 }
               }
-            } catch (e) {
-              print('[AddonService] Catalog ${cat.id} error for ${manifest.id}: $e');
             }
+          } catch (e) {
+            print('[AddonService] Catalog ${cat.id} error for ${manifest.id}: $e');
           }
-          final result = AddonSearchResult(
-            tracks: tracks,
-            albums: albums,
-            artists: artists,
-            playlists: playlists,
-          );
-          if (!result.isEmpty) return result;
         }
-
-        // Legacy fallback: GET /catalog
-        try {
-          final response = await _dio.get(
-            '${manifest.baseUrl}/catalog',
-            queryParameters: _settingsQuery(manifest),
-          );
-          if (response.statusCode == 200 && response.data != null) {
-            _emitNoticeFromData(manifest, response.data);
-            final data = _toMap(response.data);
-            if (data.isNotEmpty) {
-              return AddonSearchResult.fromJson(data, addonId: manifest.id);
-            }
-          }
-        } catch (e) {
-          print('[AddonService] Server catalog error for ${manifest.id}: $e');
-        }
+        final result = AddonSearchResult(
+          tracks: tracks,
+          albums: albums,
+          artists: artists,
+          playlists: playlists,
+        );
+        if (!result.isEmpty) return result;
       }
     }
     return null;
@@ -743,35 +765,43 @@ class AddonService extends ChangeNotifier {
 
   /// Fetch lyrics prioritizing the top-to-bottom order of installed addons.
   Future<String?> getLyrics(String artist, String title,
-      {String? addonId, String? album, int? duration}) async {
-    
-    // 1. If explicit addon provided, try it first
+      {String? addonId, String? album, int? duration, String? trackId}) async {
+    final syncedRe = RegExp(r'\[\d+:\d+\.?\d*\]');
+    String? plainFallback;
+
+    // 1. If explicit addon provided, try it first (prefer synced; keep plain as fallback).
     if (addonId != null) {
-      final lyrics = await _fetchLyricsFromAddon(addonId, artist, title, album: album, duration: duration);
-      if (lyrics != null && lyrics.isNotEmpty) return lyrics;
+      final lyrics = await _fetchLyricsFromAddon(addonId, artist, title,
+          album: album, duration: duration, trackId: trackId);
+      if (lyrics != null && lyrics.isNotEmpty) {
+        if (syncedRe.hasMatch(lyrics)) return lyrics;
+        plainFallback ??= lyrics;
+      }
     }
 
     // 2. Iterate top-to-bottom over installed addons supporting lyrics
     for (final addon in _installedAddons) {
       if (addonId != null && addon.id == addonId) continue;
       if (isAddonEnabled(addon.id) && addon.supportsLyrics) {
-        final lyrics = await _fetchLyricsFromAddon(addon.id, artist, title, album: album, duration: duration);
+        final lyrics = await _fetchLyricsFromAddon(addon.id, artist, title,
+            album: album, duration: duration, trackId: trackId);
         if (lyrics != null && lyrics.isNotEmpty) {
-          return lyrics;
+          if (syncedRe.hasMatch(lyrics)) return lyrics;
+          plainFallback ??= lyrics;
         }
       }
     }
 
-    return null;
+    return plainFallback;
   }
 
   Future<String?> _fetchLyricsFromAddon(
       String addonId, String artist, String title,
-      {String? album, int? duration}) async {
+      {String? album, int? duration, String? trackId}) async {
     final handler = _userHandlers[addonId];
     if (handler != null) {
       return handler.getLyrics(artist, title,
-          album: album, duration: duration);
+          album: album, duration: duration, trackId: trackId);
     }
 
 

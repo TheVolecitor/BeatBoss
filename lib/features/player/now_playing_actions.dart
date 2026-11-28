@@ -7,6 +7,22 @@ import '../../core/utils/app_toast.dart';
 import '../queue/queue_widgets.dart';
 import '../shared/artist_navigation.dart';
 
+/// Opens the artist page for [track], falling back to a name search.
+Future<void> openArtistForTrack(BuildContext context, Track track) async {
+  final artistId = track.artistId;
+  final addonId = track.addonId;
+  if (artistId != null && addonId != null) {
+    openArtistPage(context,
+        id: artistId, addonId: addonId, name: track.artist);
+    return;
+  }
+  // The track doesn't carry an artist id, so look the artist up by name.
+  if (!await openArtistByName(context, track.artist) && context.mounted) {
+    AppToast.show(context, 'No artist page found for ${track.artist}',
+        isError: true);
+  }
+}
+
 /// Opens the page of the artist of [track]. The tooltip shows on long-press.
 class GoToArtistButton extends StatelessWidget {
   final Track track;
@@ -20,21 +36,6 @@ class GoToArtistButton extends StatelessWidget {
     this.iconSize = 28,
   });
 
-  Future<void> _open(BuildContext context) async {
-    final artistId = track.artistId;
-    final addonId = track.addonId;
-    if (artistId != null && addonId != null) {
-      openArtistPage(context,
-          id: artistId, addonId: addonId, name: track.artist);
-      return;
-    }
-    // The track doesn't carry an artist id, so look the artist up by name.
-    if (!await openArtistByName(context, track.artist) && context.mounted) {
-      AppToast.show(context, 'No artist page found for ${track.artist}',
-          isError: true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return IconButton(
@@ -42,7 +43,7 @@ class GoToArtistButton extends StatelessWidget {
       iconSize: iconSize,
       color: color,
       tooltip: 'Go to artist',
-      onPressed: () => _open(context),
+      onPressed: () => openArtistForTrack(context, track),
     );
   }
 }

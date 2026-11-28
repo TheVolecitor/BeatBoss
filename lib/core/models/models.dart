@@ -84,7 +84,17 @@ class Track {
   }
 
   // Helpers for UI which likely expects 'album' and 'image'
-  String get displayImage => albumCover ?? '';
+  String get displayImage {
+    final url = albumCover ?? '';
+    if (url.contains('lh3.googleusercontent.com') ||
+        url.contains('yt3.ggpht.com')) {
+      final resized = url.replaceFirst(
+          RegExp(r'=w\d+-h\d+[^?&#]*'), '=w1200-h1200-l90-rj');
+      if (resized != url) return resized;
+      return url.replaceFirst(RegExp(r'=s\d+[^?&#]*'), '=s1200');
+    }
+    return url;
+  }
   bool get isHiRes => audioQuality?.isHiRes ?? false;
   String? get album => albumTitle;
   String? get image => albumCover;

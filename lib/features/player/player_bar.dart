@@ -9,10 +9,13 @@ import '../../core/models/models.dart';
 import '../../core/models/addon_models.dart';
 import '../../core/services/local_library_service.dart';
 import '../../core/services/addon_service.dart';
+import '../../core/services/youtube_music_addon_handler.dart';
+import '../../core/services/ytmusic_innertube.dart';
 import '../lyrics/lyrics_screen.dart';
 import '../queue/queue_screen.dart';
 import '../queue/queue_widgets.dart';
 import '../shared/artist_navigation.dart';
+import '../shared/marquee_text.dart';
 import 'artwork_theme.dart';
 import 'desktop_fullscreen_player.dart';
 import 'player_seekbar.dart';
@@ -208,12 +211,10 @@ class _DesktopPlayerBar extends StatelessWidget {
                             tag: 'player_bar_title_${track.id}',
                             child: Material(
                               type: MaterialType.transparency,
-                              child: Text(
+                              child: MarqueeText(
                                 track.title,
                                 style: TextStyle(
                                     color: textColor, fontWeight: FontWeight.bold),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),
@@ -221,14 +222,12 @@ class _DesktopPlayerBar extends StatelessWidget {
                             tag: 'player_bar_artist_${track.id}',
                             child: Material(
                               type: MaterialType.transparency,
-                              child: Text(
+                              child: MarqueeText(
                                 track.artist,
                                 style: TextStyle(
                                   color: secondaryColor,
                                   fontSize: 12,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),
@@ -635,18 +634,15 @@ class _MobilePlayerBar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(track.title,
+                      MarqueeText(track.title,
                           style: TextStyle(
                               color: textColor,
                               fontWeight: FontWeight.bold,
-                              fontSize: 13),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      Text(track.artist,
+                              fontSize: 13)),
+                      MarqueeText(track.artist,
                           style: TextStyle(
                               color: isDark ? Colors.white54 : Colors.black45,
-                              fontSize: 11),
-                          maxLines: 1),
+                              fontSize: 11)),
                     ],
                   ),
                 ),
@@ -713,22 +709,13 @@ class _MobilePlayerBar extends StatelessWidget {
       isScrollControlled: true,
       useRootNavigator: true, // Ensure it covers app bar
       backgroundColor: Colors.transparent,
-      builder: (context) =>
-          _ExpandedMobilePlayer(player: player, track: track, isDark: isDark),
+      builder: (context) => const _ExpandedMobilePlayer(),
     );
   }
 }
 
 class _ExpandedMobilePlayer extends StatelessWidget {
-  final AudioPlayerService player;
-  final Track track;
-  final bool isDark;
-
-  const _ExpandedMobilePlayer({
-    required this.player,
-    required this.track,
-    required this.isDark,
-  });
+  const _ExpandedMobilePlayer();
 
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;
@@ -749,6 +736,20 @@ class _ExpandedMobilePlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final player = context.watch<AudioPlayerService>();
+    final settings = context.watch<SettingsService>();
+    final isDark = settings.isDarkMode;
+    final track = player.currentTrack;
+
+    if (track == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      });
+      return const SizedBox.shrink();
+    }
+
     final textColor = isDark ? Colors.white : Colors.black;
     final secondaryColor = isDark ? Colors.white54 : Colors.black54;
 
@@ -768,13 +769,9 @@ class _ExpandedMobilePlayer extends StatelessWidget {
         final artistFontSize = isSmallScreen ? 14.0 : 17.0;
         final sectionSpacing = isSmallScreen ? 12.0 : 22.0;
 
-        return Consumer<AudioPlayerService>(builder: (context, player, _) {
-          final settings = context.watch<SettingsService>();
-          // The sheet is opened with the track that was playing at that moment;
-          // follow the player so Next/Previous update art, title and artist.
-          final track = player.currentTrack ?? this.track;
-          return ArtworkTheme(
+        return ArtworkTheme(
             imageUrl: track.displayImage,
+            enabled: settings.useDynamicPlayerColors,
             builder: (context, scheme) => ArtworkGradient(
             scheme: scheme,
             base: isDark ? AppTheme.darkBackground : AppTheme.lightBackground,
@@ -813,7 +810,9 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                               color: secondaryColor,
                             ),
                             onSelected: (value) {
-                              if (value == 'radio') {
+                              if (value == 'artist') {
+                                _openArtist(context, track);
+                              } else if (value == 'radio') {
                                 toggleRadio(context, player, track);
                               } else if (value.startsWith('seekbar:')) {
                                 settings.setSeekbarStyle(
@@ -821,6 +820,16 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                               }
                             },
                             itemBuilder: (_) => [
+                              const PopupMenuItem(
+                                value: 'artist',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.person_outline, size: 18),
+                                    SizedBox(width: 10),
+                                    Text('Go to Artist'),
+                                  ],
+                                ),
+                              ),
                               PopupMenuItem(
                                 value: 'radio',
                                 child: Row(
@@ -829,7 +838,7 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                       Icons.radio,
                                       size: 18,
                                       color: player.radioSeed != null
-                                          ? AppTheme.primaryGreen
+                                          ? scheme.primary
                                           : null,
                                     ),
                                     const SizedBox(width: 10),
@@ -847,27 +856,22 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold)),
                               ),
-                              for (final style in const [
-                                ('normal', 'Normal'),
-                                ('sleek', 'Sleek'),
-                                ('waveform', 'Waveform'),
-                                ('heartbeat', 'Heartbeat'),
-                              ])
+                              for (final style in PlayerSeekBar.styles)
                                 PopupMenuItem(
-                                  value: 'seekbar:${style.$1}',
+                                  value: 'seekbar:${style.id}',
                                   child: Row(
                                     children: [
                                       Icon(
-                                        settings.seekbarStyle == style.$1
+                                        settings.seekbarStyle == style.id
                                             ? Icons.check_rounded
                                             : Icons.circle_outlined,
                                         size: 16,
-                                        color: settings.seekbarStyle == style.$1
-                                            ? AppTheme.primaryGreen
+                                        color: settings.seekbarStyle == style.id
+                                            ? scheme.primary
                                             : null,
                                       ),
                                       const SizedBox(width: 10),
-                                      Text(style.$2),
+                                      Text(style.label),
                                     ],
                                   ),
                                 ),
@@ -880,40 +884,45 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                       SizedBox(
                           height: artSize,
                           child: Center(
-                              child: _TrackArt(
-                                  imageUrl: track.displayImage,
+                              child: _YtmFullResArt(
+                                  key: ValueKey(track.id),
+                                  track: track,
                                   size: artSize,
-                                  isDownloaded: false))),
+                                  borderRadius: settings.playerArtRadius))),
                       SizedBox(height: sectionSpacing),
 
                       // Info + Addon/Quality Markers
                       Column(
                         children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
+                          SizedBox(
+                            width: double.infinity,
+                            child: MarqueeText(
                               track.title,
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   color: textColor,
                                   fontSize: titleFontSize,
                                   fontWeight: FontWeight.bold),
-                              maxLines: 2,
                             ),
                           ),
                           const SizedBox(height: 6),
                           GestureDetector(
                             onTap: () => _openArtist(context, track),
-                            child: Text(track.artist,
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: MarqueeText(
+                                track.artist,
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: secondaryColor,
                                   fontSize: artistFontSize,
                                 ),
-                                textAlign: TextAlign.center,
-                                maxLines: 1),
+                              ),
+                            ),
                           ),
-                          if (player.providerAddonName != null ||
-                              player.qualityLabel != null) ...[
+                          if (settings.showQualityBadges &&
+                              (player.providerAddonName != null ||
+                                  player.qualityLabel != null)) ...[
                             const SizedBox(height: 10),
                             Wrap(
                               spacing: 12,
@@ -963,6 +972,10 @@ class _ExpandedMobilePlayer extends StatelessWidget {
                               bufferedValue: player.bufferedSliderValue,
                               seed: track.id,
                               isDark: isDark,
+                              isPlaying: player.isPlaying,
+                              accentColor: scheme.primary,
+                              trackHeight: settings.seekbarHeight,
+                              wavyAmplitude: settings.wavyAmplitude,
                               onChanged: player.seekToSlider,
                             ),
                           ),
@@ -1045,67 +1058,73 @@ class _ExpandedMobilePlayer extends StatelessWidget {
 
                       const SizedBox(height: 30),
 
-                      // Bottom Actions (Lyrics, Queue)
+                      // Bottom Actions (Lyrics, Favourite, Queue)
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          // Relocated Heart Button
-                          Consumer<LocalLibraryService>(
-                            builder: (context, localLibrary, child) {
-                              final isFav = localLibrary.isFavourite(track.id);
-                              return Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.05)
-                                      : Colors.black.withOpacity(0.05),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: IconButton(
-                                  icon: Icon(isFav
-                                      ? Icons.favorite
-                                      : Icons.favorite_border),
-                                  color: isFav
-                                      ? scheme.primary
-                                      : secondaryColor,
-                                  iconSize: 32,
-                                  onPressed: () {
-                                    localLibrary.toggleFavourite(track,
-                                        addonService:
-                                            context.read<AddonService>());
-                                  },
-                                ),
-                              );
-                            },
+                          Expanded(
+                            child: Center(
+                              child: IconButton(
+                                icon: Icon(Icons.lyrics_outlined,
+                                    color: secondaryColor),
+                                tooltip: 'Lyrics',
+                                onPressed: () {
+                                  showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (_) => const LyricsScreen());
+                                },
+                              ),
+                            ),
                           ),
-                          IconButton(
-                            icon: Icon(Icons.lyrics_outlined,
-                                color: secondaryColor),
-                            tooltip: 'Lyrics',
-                            onPressed: () {
-                              showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => const LyricsScreen());
-                            },
+                          Expanded(
+                            child: Center(
+                              child: Consumer<LocalLibraryService>(
+                                builder: (context, localLibrary, child) {
+                                  final isFav =
+                                      localLibrary.isFavourite(track.id);
+                                  return Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? Colors.white.withOpacity(0.05)
+                                          : Colors.black.withOpacity(0.05),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(isFav
+                                          ? Icons.favorite
+                                          : Icons.favorite_border),
+                                      color: isFav
+                                          ? scheme.primary
+                                          : secondaryColor,
+                                      iconSize: 32,
+                                      onPressed: () {
+                                        localLibrary.toggleFavourite(track,
+                                            addonService:
+                                                context.read<AddonService>());
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                           ),
-                          GoToArtistButton(track: track, color: secondaryColor),
-                          RadioButton(
-                              track: track,
-                              color: secondaryColor,
-                              activeColor: scheme.primary),
-                          IconButton(
-                            icon:
-                                Icon(Icons.queue_music, color: secondaryColor),
-                            tooltip: 'Queue',
-                            onPressed: () {
-                              showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (_) => const QueueScreen());
-                            },
+                          Expanded(
+                            child: Center(
+                              child: IconButton(
+                                icon: Icon(Icons.queue_music,
+                                    color: secondaryColor),
+                                tooltip: 'Queue',
+                                onPressed: () {
+                                  showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (_) => const QueueScreen());
+                                },
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -1116,9 +1135,64 @@ class _ExpandedMobilePlayer extends StatelessWidget {
               ),
             ),
           ),
-          );
-        });
+        );
       },
+    );
+  }
+}
+
+class _YtmFullResArt extends StatefulWidget {
+  final Track track;
+  final double size;
+  final double borderRadius;
+
+  const _YtmFullResArt({
+    super.key,
+    required this.track,
+    required this.size,
+    required this.borderRadius,
+  });
+
+  @override
+  State<_YtmFullResArt> createState() => _YtmFullResArtState();
+}
+
+class _YtmFullResArtState extends State<_YtmFullResArt> {
+  String? _hdUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  @override
+  void didUpdateWidget(covariant _YtmFullResArt oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.track.id != widget.track.id) {
+      _hdUrl = null;
+      _fetch();
+    }
+  }
+
+  void _fetch() {
+    if (widget.track.addonId != YouTubeMusicAddonHandler.addonId) return;
+    final id = widget.track.id;
+    YtMusicInnerTube().getTrackArtwork(id).then((url) {
+      if (!mounted || widget.track.id != id || url == null || url.isEmpty) {
+        return;
+      }
+      setState(() => _hdUrl = url);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _TrackArt(
+      imageUrl: _hdUrl ?? widget.track.displayImage,
+      size: widget.size,
+      borderRadius: widget.borderRadius,
+      isDownloaded: false,
     );
   }
 }
@@ -1126,11 +1200,13 @@ class _ExpandedMobilePlayer extends StatelessWidget {
 class _TrackArt extends StatelessWidget {
   final String imageUrl;
   final double size;
+  final double borderRadius;
   final bool isDownloaded;
 
   const _TrackArt({
     required this.imageUrl,
     this.size = 55,
+    this.borderRadius = 8,
     required this.isDownloaded,
   });
 
@@ -1142,16 +1218,16 @@ class _TrackArt extends StatelessWidget {
           width: size,
           height: size,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(borderRadius),
             color: AppTheme.darkCard,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(borderRadius),
             child: imageUrl.isNotEmpty
                 ? CachedNetworkImage(
                     imageUrl: imageUrl,
                     fit: BoxFit.cover,
-                    memCacheWidth: 600,
+                    memCacheWidth: 1000,
                     placeholder: (_, __) => Container(color: AppTheme.darkCard),
                     errorWidget: (_, __, ___) =>
                         const Icon(Icons.music_note, color: Colors.white30),
